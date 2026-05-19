@@ -1,8 +1,66 @@
-logs/
+# ==================================
+# PYTHON
+# ==================================
+
 __pycache__/
 *.pyc
-.env
-.venv/
+*.pyo
 
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# ==================================
+# VARIABLES SENSIBLES
+# ==================================
+
+.env
+.env.*
+
+# ==================================
+# AIRFLOW LOGS
+# ==================================
+
+logs/*
+!logs/.gitkeep
+
+# ==================================
+# DATASETS Y OUTPUTS
+# ==================================
+
+# Mantener estructura
+!data/
+!data/input/
+!data/output/
+
+# Ignorar outputs generados
+data/output/*
+!data/output/.gitkeep
+
+# Opcional:
+# descomentá esto si NO quieren subir datasets
 # data/input/*
-# data/output/*
+# !data/input/.gitkeep
+
+# ==================================
+# EDITORES
+# ==================================
+
+.vscode/
+.idea/
+
+# ==================================
+# SISTEMA
+# ==================================
+
+.DS_Store
+Thumbs.db
+
+# ==================================
+# BASES / TEMPORALES
+# ==================================
+
+*.sqlite
+*.db
+*.log
