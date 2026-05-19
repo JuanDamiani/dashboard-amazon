@@ -3,5 +3,6 @@ __pycache__/
 *.pyc
 .env
 .venv/
-data/input/*
-data/output/*
+
+# data/input/*
+# data/output/*
