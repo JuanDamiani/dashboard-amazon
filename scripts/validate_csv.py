@@ -98,6 +98,43 @@ def verificar_valores_advertencia(df, advertencias):
             advertencias.append(f"'{col}': valores nuevos detectados: {nuevos}")
     return advertencias
 
+def verificar_rangos(df, errores):
+    """
+    Verifica que los valores numéricos estén
+    dentro de los rangos esperados. Solo incluye
+    columnas con límites claros y definidos por el negocio.
+    """
+    rangos = {
+        "discount": (0, 100),  # entre 0 y 100
+        "rating":   (0, 5),    # entre 0 y 5
+    }
+    for col, (minimo, maximo) in rangos.items():
+        if minimo is not None:
+            fuera = (pd.to_numeric(df[col], errors='coerce') < minimo).sum()
+            if fuera > 0:
+                errores.append(f"'{col}': {fuera} valores menores a {minimo}")
+        if maximo is not None:
+            fuera = (pd.to_numeric(df[col], errors='coerce') > maximo).sum()
+            if fuera > 0:
+                errores.append(f"'{col}': {fuera} valores mayores a {maximo}")
+    return errores
+
+def verificar_rangos_sospechosos(df, advertencias):
+    """
+    Verifica valores que aunque no son imposibles,
+    son poco comunes y podrían indicar errores de carga.
+    No detiene el procesamiento, solo genera advertencias.
+    """
+    rangos_sospechosos = {
+        "shipping_time_days": 30,
+        "stock":              10000,
+        "price":              500000
+    }
+    for col, limite in rangos_sospechosos.items():
+        sospechosos = (pd.to_numeric(df[col], errors='coerce') > limite).sum()
+        if sospechosos > 0:
+            advertencias.append(f"'{col}': {sospechosos} valores mayores a {limite}")
+    return advertencias
 
 # funcion que muestra el reporte (interna)
 
@@ -117,7 +154,7 @@ def _mostrar_resultado(errores, advertencias, total_filas):
     if errores:
         print(f"Errores ({len(errores)}):")
         for e in errores:
-            print(f"   → {e}")
+            print(f" {e}")
     else:
         print("Sin errores")
 
@@ -126,7 +163,7 @@ def _mostrar_resultado(errores, advertencias, total_filas):
     if advertencias:
         print(f"Advertencias ({len(advertencias)}):")
         for a in advertencias:
-            print(f"   → {a}")
+            print(f" {a}")
     else:
         print("Sin advertencias")
 
@@ -142,11 +179,10 @@ def _mostrar_resultado(errores, advertencias, total_filas):
 
 def validate_csv():
     """
-      Ejecuta las validaciones del archivo CSV y consolida los resultados.
-      Si se encuentran errores críticos, se interrumpe la ejecución
-      mediante una excepción para marcar la tarea como fallida en Airflow.
-   """
-    
+    Ejecuta las validaciones del archivo CSV y consolida los resultados.
+    Si se encuentran errores críticos, se interrumpe la ejecución
+    mediante una excepción para marcar la tarea como fallida en Airflow.
+    """
     errores = []
     advertencias = []
 
@@ -162,7 +198,9 @@ def validate_csv():
     errores = verificar_numericos(df, errores)
     errores = verificar_fechas(df, errores)
     errores = verificar_valores_estrictos(df, errores)
+    errores = verificar_rangos(df, errores)
     advertencias = verificar_valores_advertencia(df, advertencias)
+    advertencias = verificar_rangos_sospechosos(df, advertencias)
 
     _mostrar_resultado(errores, advertencias, total_filas)
 
@@ -172,6 +210,5 @@ def validate_csv():
     print("Validacion exitosa")
 
 
-
-    if __name__ == "__main__":
-        validate_csv()
+if __name__ == "__main__":
+    validate_csv()
