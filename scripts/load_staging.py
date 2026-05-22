@@ -75,7 +75,7 @@ def convertir_tipos(df):
     correspondiente para su procesamiento.
     """
     # Fechas
-    df["purchase_date"] = pd.to_datetime(df["purchase_date"], format="%d/%m/%Y")
+    df["purchase_date"] = pd.to_datetime(df["purchase_date"], format="mixed")
 
     # Booleano
     df["is_returned"] = df["is_returned"].map({"True": True, "False": False})
@@ -127,3 +127,7 @@ def load_staging():
     print("=" * 50)
     print("Carga staging finalizada")
     print("=" * 50)
+
+
+    if __name__ == "__main__":
+        load_staging()

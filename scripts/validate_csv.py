@@ -66,7 +66,7 @@ def verificar_fechas(df, errores):
     se registra como error.
     """
     fechas_invalidas = pd.to_datetime(
-        df["purchase_date"], format="%d/%m/%Y", errors='coerce'
+        df["purchase_date"], format="mixed", errors='coerce'
     ).isna().sum()
     if fechas_invalidas > 0:
         errores.append(f"'purchase_date': {fechas_invalidas} fechas con formato invalido")
@@ -170,3 +170,8 @@ def validate_csv():
         raise ValueError(f"Validacion fallida: {len(errores)} error(es) encontrado(s)")
 
     print("Validacion exitosa")
+
+
+
+    if __name__ == "__main__":
+        validate_csv()
