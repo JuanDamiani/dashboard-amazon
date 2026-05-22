@@ -34,3 +34,7 @@ VALORES_ADVERTENCIA = {
     "payment_method": ["UPI", "Credit Card", "Debit Card", "Cash on Delivery"],
     "device":         ["Mobile App", "Web", "Tablet"]
 }
+
+
+# Conexión a PostgreSQL
+DB_URL = "postgresql+psycopg2://dwh:dwh123@postgres-dwh:5432/amazon_dwh"
