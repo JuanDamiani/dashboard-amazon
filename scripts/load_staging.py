@@ -88,6 +88,22 @@ def convertir_tipos(df):
     print("Conversion de tipos completada")
     return df
 
+def estandarizar_texto(df):
+    """
+    Limpia espacios extras y estandariza mayusculas
+    en columnas de texto para evitar inconsistencias.
+    """
+    columnas_texto = [
+        "category", "subcategory", "brand",
+        "location", "device", "payment_method",
+        "delivery_status"
+    ]
+    for col in columnas_texto:
+        df[col] = df[col].str.strip()        # saca espacios adelante y atrás
+        df[col] = df[col].str.title()        # Primera Letra Mayuscula
+    
+    print("Estandarizacion de texto completada")
+    return df
 
 def cargar_en_postgresql(df):
     """
@@ -121,6 +137,7 @@ def load_staging():
     df = eliminar_duplicados(df)
     df = eliminar_nulos_criticos(df)
     df = imputar_nulos(df)
+    df = estandarizar_texto(df)
     df = convertir_tipos(df)
     cargar_en_postgresql(df)
 
