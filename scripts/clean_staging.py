@@ -1,10 +1,6 @@
 import pandas as pd
-from sqlalchemy import create_engine
 from datetime import datetime
-from scripts.config import (
-    COLUMNAS_CRITICAS,
-    DB_URL
-)
+from scripts.load import cargar_tabla, get_engine
 
 
 def leer_bronze():
@@ -12,7 +8,7 @@ def leer_bronze():
     Lee los datos crudos desde staging.amazon_sales_raw
     (capa Bronze) para procesarlos.
     """
-    engine = create_engine(DB_URL)
+    engine = get_engine()
     df = pd.read_sql("SELECT * FROM staging.amazon_sales_raw", engine)
     print(f"Filas leidas desde Bronze: {len(df):,}")
     return df
@@ -78,18 +74,9 @@ def convertir_tipos(df):
 
 def cargar_en_silver(df):
     """
-    Carga el dataframe limpio en la tabla
-    staging.amazon_sales_clean de PostgreSQL (Silver).
+    Carga el dataframe en staging.amazon_sales_clean (Silver).
     """
-    engine = create_engine(DB_URL)
-    df.to_sql(
-        "amazon_sales_clean",
-        engine,
-        schema="staging",
-        if_exists="replace",
-        index=False
-    )
-    print(f"Carga completada: {len(df):,} filas en staging.amazon_sales_clean")
+    cargar_tabla(df, "amazon_sales_clean", "staging")
 
 
 # funcion principal

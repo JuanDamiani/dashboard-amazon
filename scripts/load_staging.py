@@ -1,12 +1,8 @@
 import pandas as pd
 from sqlalchemy import create_engine
 from datetime import datetime
-from scripts.config import (
-    ARCHIVO_CSV,
-    COLUMNAS_CRITICAS,
-    DB_URL,
-    CSV_SEPARATOR
-)
+from scripts.load import cargar_tabla
+from scripts.config import (ARCHIVO_CSV, COLUMNAS_CRITICAS,CSV_SEPARATOR)
 
 
 def leer_csv():
@@ -43,19 +39,9 @@ def eliminar_nulos_criticos(df):
 
 def cargar_en_postgresql(df):
     """
-    Carga el dataframe en la tabla
-    staging.amazon_sales_raw de PostgreSQL (Bronze).
+    Carga el dataframe en staging.amazon_sales_raw (Bronze).
     """
-    engine = create_engine(DB_URL)
-    df.to_sql(
-        "amazon_sales_raw",
-        engine,
-        schema="staging",
-        if_exists="replace",
-        index=False
-    )
-    print(f"Carga completada: {len(df):,} filas en staging.amazon_sales_raw")
-
+    cargar_tabla(df, "amazon_sales_raw", "staging")
 
 # funcion principal
 
