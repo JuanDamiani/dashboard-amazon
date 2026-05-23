@@ -1,15 +1,8 @@
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
-from scripts.config import (
-    ARCHIVO_CSV,
-    COLUMNAS_REQUERIDAS,
-    COLUMNAS_CRITICAS,
-    COLUMNAS_NUMERICAS,
-    VALORES_ESTRICTOS,
-    VALORES_ADVERTENCIA,
-    CSV_SEPARATOR
-)
+from scripts.config import (ARCHIVO_CSV,COLUMNAS_REQUERIDAS,COLUMNAS_CRITICAS,COLUMNAS_NUMERICAS,VALORES_ESTRICTOS,
+VALORES_ADVERTENCIA,CSV_SEPARATOR)
 
 # funciones de validacion
 

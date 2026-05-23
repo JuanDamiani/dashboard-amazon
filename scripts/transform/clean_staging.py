@@ -2,7 +2,6 @@ import hashlib
 import pandas as pd
 from datetime import datetime
 from scripts.utils.db import engine
-from scripts.config import ARCHIVO_CSV, CSV_SEPARATOR
 
 
 def leer_bronze():
