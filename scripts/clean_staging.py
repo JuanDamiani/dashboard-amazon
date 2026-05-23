@@ -13,8 +13,7 @@ def leer_bronze():
     df_raw = pd.read_sql("SELECT * FROM staging.amazon_sales_raw", engine)
     registros = []
     for _, row in df_raw.iterrows():
-        import json
-        payload = json.loads(row["raw_payload"])
+        payload = row["raw_payload"]  # ya viene como dict, no hay que parsear
         payload["batch_id"] = row["batch_id"]
         payload["source_file"] = row["source_file"]
         registros.append(payload)
