@@ -3,6 +3,9 @@
 # Los alumnos pueden agregar DAGs en ./dags y, si trabajan con archivos,
 # leerlos desde /opt/airflow/data dentro de los contenedores de Airflow.
 
+services:
+
+
   # ==========================================
   # POSTGRES - AIRFLOW METADATA
   # ==========================================
