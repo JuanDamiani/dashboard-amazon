@@ -38,3 +38,5 @@ VALORES_ADVERTENCIA = {
 
 # Conexión a PostgreSQL
 DB_URL = "postgresql+psycopg2://dwh:dwh123@postgres-dwh:5432/amazon_dwh"
+
+CSV_SEPARATOR = ";"

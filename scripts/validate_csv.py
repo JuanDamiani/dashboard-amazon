@@ -7,7 +7,8 @@ from scripts.config import (
     COLUMNAS_CRITICAS,
     COLUMNAS_NUMERICAS,
     VALORES_ESTRICTOS,
-    VALORES_ADVERTENCIA
+    VALORES_ADVERTENCIA,
+    CSV_SEPARATOR
 )
 
 # funciones de validacion
@@ -20,7 +21,7 @@ def verificar_archivo():
     """
     if not ARCHIVO_CSV.exists():
         raise FileNotFoundError(f"Archivo no encontrado: {ARCHIVO_CSV}")
-    df = pd.read_csv(ARCHIVO_CSV, dtype=str)
+    df = pd.read_csv(ARCHIVO_CSV, dtype=str, sep=CSV_SEPARATOR)
     print(f"Archivo leído: {len(df):,} filas")
     return df
 
