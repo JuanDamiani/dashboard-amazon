@@ -1,43 +1,201 @@
+-- =========================================================
+-- AMAZON E-COMMERCE DASHBOARD
+-- DATA WAREHOUSE INITIALIZATION
+-- =========================================================
+-- Arquitectura:
+--
+-- CSV INPUT
+--     ↓
+-- RAW STAGING
+--     ↓
+-- FACT TABLE
+--     ↓
+-- ANALYTICS MARTS
+--     ↓
+-- METABASE
+--
+-- Objetivos:
+-- - Persistencia histórica
+-- - Evitar duplicados
+-- - Reprocesamiento seguro
+-- - Observabilidad ETL
+-- - Optimización para dashboards
+-- - Alineación con SRS y Airflow
+-- =========================================================
+
+-- =========================================================
+-- SCHEMAS
+-- =========================================================
+
 CREATE SCHEMA IF NOT EXISTS staging;
 CREATE SCHEMA IF NOT EXISTS analytics;
 
+-- =========================================================
+-- RAW STAGING
+-- =========================================================
+-- Guarda el CSV original sin transformar.
+-- Permite:
+-- - auditoría
+-- - reprocesamiento
+-- - debugging
+-- - trazabilidad
+-- =========================================================
+
 CREATE TABLE IF NOT EXISTS staging.amazon_sales_raw (
 
-    user_id VARCHAR(50),
-    product_id VARCHAR(50),
+    raw_id SERIAL PRIMARY KEY,
 
-    category VARCHAR(100),
-    subcategory VARCHAR(100),
-    brand VARCHAR(100),
+    source_file VARCHAR(255) NOT NULL,
 
-    price NUMERIC(12,2),
-    discount NUMERIC(5,2),
-    final_price NUMERIC(12,2),
+    batch_id VARCHAR(100) NOT NULL,
 
-    rating NUMERIC(3,2),
-    review_count INTEGER,
+    loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    stock INTEGER,
+    raw_payload JSONB NOT NULL
+);
 
-    seller_id VARCHAR(50),
-    seller_rating NUMERIC(3,2),
+CREATE INDEX IF NOT EXISTS idx_raw_batch
+ON staging.amazon_sales_raw(batch_id);
+
+CREATE INDEX IF NOT EXISTS idx_raw_loaded_at
+ON staging.amazon_sales_raw(loaded_at);
+
+-- =========================================================
+-- PROCESSED FILES
+-- =========================================================
+-- Evita reprocesamiento de archivos CSV.
+-- Importante para persistencia histórica.
+-- RF14
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.processed_files (
+
+    id SERIAL PRIMARY KEY,
+
+    file_name VARCHAR(255) UNIQUE NOT NULL,
+
+    batch_id VARCHAR(100),
+
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =========================================================
+-- FACT TABLE
+-- =========================================================
+-- Tabla central del DWH.
+-- 1 fila = 1 orden procesada.
+-- Todas las métricas salen desde acá.
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.fact_orders (
+
+    fact_id SERIAL PRIMARY KEY,
+
+    sale_id VARCHAR(255) UNIQUE NOT NULL,
+
+    batch_id VARCHAR(100),
+
+    source_file VARCHAR(255),
+
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- FECHAS
+
+    purchase_timestamp TIMESTAMP,
 
     purchase_date DATE,
 
-    shipping_time_days INTEGER,
+    purchase_year INTEGER,
+
+    purchase_month INTEGER,
+
+    purchase_day INTEGER,
+
+    -- ENTIDADES
+
+    user_id VARCHAR(50),
+
+    product_id VARCHAR(50),
+
+    seller_id VARCHAR(50),
+
+    -- PRODUCTO
+
+    category VARCHAR(100),
+
+    subcategory VARCHAR(100),
+
+    brand VARCHAR(100),
+
+    -- UBICACIÓN Y CANAL
 
     location VARCHAR(100),
+
     device VARCHAR(50),
+
     payment_method VARCHAR(50),
 
-    is_returned BOOLEAN,
+    delivery_status VARCHAR(50),
 
-    delivery_status VARCHAR(50)
+    -- MÉTRICAS
+
+    price NUMERIC(12,2),
+
+    discount NUMERIC(5,2),
+
+    final_price NUMERIC(12,2),
+
+    rating NUMERIC(3,2),
+
+    review_count INTEGER,
+
+    seller_rating NUMERIC(3,2),
+
+    shipping_time_days INTEGER,
+
+    stock INTEGER,
+
+    is_returned BOOLEAN
 );
 
-CREATE TABLE IF NOT EXISTS analytics.kpi_sales_summary (
+-- =========================================================
+-- FACT INDEXES
+-- =========================================================
 
-    metric_date DATE,
+CREATE INDEX IF NOT EXISTS idx_fact_purchase_date
+ON analytics.fact_orders(purchase_date);
+
+CREATE INDEX IF NOT EXISTS idx_fact_category
+ON analytics.fact_orders(category);
+
+CREATE INDEX IF NOT EXISTS idx_fact_subcategory
+ON analytics.fact_orders(subcategory);
+
+CREATE INDEX IF NOT EXISTS idx_fact_brand
+ON analytics.fact_orders(brand);
+
+CREATE INDEX IF NOT EXISTS idx_fact_seller
+ON analytics.fact_orders(seller_id);
+
+CREATE INDEX IF NOT EXISTS idx_fact_location
+ON analytics.fact_orders(location);
+
+CREATE INDEX IF NOT EXISTS idx_fact_device
+ON analytics.fact_orders(device);
+
+CREATE INDEX IF NOT EXISTS idx_fact_payment
+ON analytics.fact_orders(payment_method);
+
+CREATE INDEX IF NOT EXISTS idx_fact_delivery_status
+ON analytics.fact_orders(delivery_status);
+
+-- =========================================================
+-- MART: EXECUTIVE SUMMARY (RF1)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_sales_summary (
+
+    metric_date DATE PRIMARY KEY,
 
     total_orders INTEGER,
 
@@ -54,61 +212,93 @@ CREATE TABLE IF NOT EXISTS analytics.kpi_sales_summary (
     return_rate NUMERIC(6,2)
 );
 
-CREATE TABLE IF NOT EXISTS analytics.etl_audit_log (
+-- =========================================================
+-- MART: SALES BY CATEGORY (RF3)
+-- =========================================================
 
-    id SERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS analytics.mart_sales_by_category (
 
-    process_name VARCHAR(100),
-
-    source_file VARCHAR(255),
-
-    rows_processed INTEGER,
-
-    status VARCHAR(50),
-
-    message TEXT,
-
-    execution_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
--- ==========================================
--- KPI TOP CATEGORIES
--- ==========================================
-
-CREATE TABLE IF NOT EXISTS analytics.kpi_top_categories (
+    metric_date DATE,
 
     category VARCHAR(100),
 
     total_orders INTEGER,
 
-    revenue NUMERIC(14,2),
+    total_revenue NUMERIC(14,2),
 
     avg_rating NUMERIC(4,2),
 
     avg_discount NUMERIC(6,2)
 );
 
--- ==========================================
--- KPI TOP BRANDS
--- ==========================================
+CREATE INDEX IF NOT EXISTS idx_mart_category
+ON analytics.mart_sales_by_category(category);
 
-CREATE TABLE IF NOT EXISTS analytics.kpi_top_brands (
+-- =========================================================
+-- MART: SALES BY BRAND (RF3)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_sales_by_brand (
+
+    metric_date DATE,
 
     brand VARCHAR(100),
 
-    total_sales INTEGER,
+    total_orders INTEGER,
 
-    revenue NUMERIC(14,2),
+    total_revenue NUMERIC(14,2),
 
     avg_rating NUMERIC(4,2),
 
     avg_seller_rating NUMERIC(4,2)
 );
 
--- ==========================================
--- KPI DELIVERY METRICS
--- ==========================================
+CREATE INDEX IF NOT EXISTS idx_mart_brand
+ON analytics.mart_sales_by_brand(brand);
 
-CREATE TABLE IF NOT EXISTS analytics.kpi_delivery_metrics (
+-- =========================================================
+-- MART: VENTAS MENSUALES (RF3)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_ventas_mensuales (
+
+    metric_date DATE,
+
+    anio INTEGER,
+
+    mes INTEGER,
+
+    total_orders INTEGER,
+
+    revenue NUMERIC(14,2),
+
+    avg_ticket NUMERIC(14,2)
+);
+
+-- =========================================================
+-- MART: VENTAS POR DISPOSITIVO (RF3, RF5)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_ventas_dispositivo (
+
+    metric_date DATE,
+
+    device VARCHAR(50),
+
+    category VARCHAR(100),
+
+    total_orders INTEGER,
+
+    revenue NUMERIC(14,2)
+);
+
+-- =========================================================
+-- MART: LOGISTICS (RF4)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_logistics (
+
+    metric_date DATE,
 
     delivery_status VARCHAR(50),
 
@@ -119,26 +309,66 @@ CREATE TABLE IF NOT EXISTS analytics.kpi_delivery_metrics (
     return_rate NUMERIC(6,2)
 );
 
--- ==========================================
--- KPI PAYMENT METHODS
--- ==========================================
+-- =========================================================
+-- MART: LOGISTICA POR CIUDAD (RF4)
+-- =========================================================
 
-CREATE TABLE IF NOT EXISTS analytics.kpi_payment_methods (
+CREATE TABLE IF NOT EXISTS analytics.mart_logistica_ciudad (
+
+    metric_date DATE,
+
+    location VARCHAR(100),
+
+    avg_shipping_days NUMERIC(6,2),
+
+    return_rate NUMERIC(6,2),
+
+    total_orders INTEGER
+);
+
+-- =========================================================
+-- MART: DEMORAS MENSUALES (RF4)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_demoras_mensuales (
+
+    metric_date DATE,
+
+    anio INTEGER,
+
+    mes INTEGER,
+
+    total_delayed INTEGER,
+
+    total_orders INTEGER,
+
+    pct_delayed NUMERIC(6,2)
+);
+
+-- =========================================================
+-- MART: PAYMENT METHODS (RF1, RF7)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_payment_methods (
+
+    metric_date DATE,
 
     payment_method VARCHAR(50),
 
     total_orders INTEGER,
 
-    revenue NUMERIC(14,2),
+    total_revenue NUMERIC(14,2),
 
     avg_ticket NUMERIC(14,2)
 );
 
--- ==========================================
--- KPI RETURNS
--- ==========================================
+-- =========================================================
+-- MART: RETURNS (RF4, RF5)
+-- =========================================================
 
-CREATE TABLE IF NOT EXISTS analytics.kpi_returns (
+CREATE TABLE IF NOT EXISTS analytics.mart_returns (
+
+    metric_date DATE,
 
     category VARCHAR(100),
 
@@ -149,102 +379,110 @@ CREATE TABLE IF NOT EXISTS analytics.kpi_returns (
     return_rate NUMERIC(6,2)
 );
 
+-- =========================================================
+-- MART: SELLER PERFORMANCE (RF6)
+-- =========================================================
 
--- ==========================================
--- SILVER - DATOS LIMPIOS
--- ==========================================
-CREATE TABLE IF NOT EXISTS staging.amazon_sales_clean (
-    user_id             VARCHAR(50),
-    product_id          VARCHAR(50),
-    category            VARCHAR(100),
-    subcategory         VARCHAR(100),
-    brand               VARCHAR(100),
-    price               NUMERIC(12,2),
-    discount            NUMERIC(5,2),
-    final_price         NUMERIC(12,2),
-    rating              NUMERIC(3,2),
-    review_count        INTEGER,
-    stock               INTEGER,
-    seller_id           VARCHAR(50),
-    seller_rating       NUMERIC(3,2),
-    purchase_date       DATE,
-    shipping_time_days  INTEGER,
-    location            VARCHAR(100),
-    device              VARCHAR(50),
-    payment_method      VARCHAR(50),
-    is_returned         BOOLEAN,
-    delivery_status     VARCHAR(50)
+CREATE TABLE IF NOT EXISTS analytics.mart_seller_performance (
+
+    metric_date DATE,
+
+    seller_id VARCHAR(50),
+
+    total_orders INTEGER,
+
+    total_revenue NUMERIC(14,2),
+
+    avg_seller_rating NUMERIC(4,2),
+
+    return_rate NUMERIC(6,2)
 );
 
--- ==========================================
--- KPI VENTAS MENSUALES (RF3)
--- ==========================================
-CREATE TABLE IF NOT EXISTS analytics.kpi_ventas_mensuales (
-    anio            INTEGER,
-    mes             INTEGER,
-    total_orders    INTEGER,
-    revenue         NUMERIC(14,2),
-    avg_ticket      NUMERIC(14,2)
+CREATE INDEX IF NOT EXISTS idx_mart_seller
+ON analytics.mart_seller_performance(seller_id);
+
+-- =========================================================
+-- MART: CUSTOMER EXPERIENCE (RF5)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_customer_experience (
+
+    metric_date DATE,
+
+    category VARCHAR(100),
+
+    avg_rating NUMERIC(4,2),
+
+    return_rate NUMERIC(6,2),
+
+    avg_shipping_days NUMERIC(6,2)
 );
 
--- ==========================================
--- KPI VENTAS POR DISPOSITIVO (RF3, RF5)
--- ==========================================
-CREATE TABLE IF NOT EXISTS analytics.kpi_ventas_dispositivo (
-    device          VARCHAR(50),
-    category        VARCHAR(100),
-    total_orders    INTEGER,
-    revenue         NUMERIC(14,2)
+-- =========================================================
+-- MART: SATISFACCION POR CIUDAD (RF5)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_satisfaccion_ciudad (
+
+    metric_date DATE,
+
+    location VARCHAR(100),
+
+    avg_rating NUMERIC(4,2),
+
+    total_orders INTEGER,
+
+    return_rate NUMERIC(6,2)
 );
 
--- ==========================================
--- KPI EXPERIENCIA CLIENTE (RF5)
--- ==========================================
-CREATE TABLE IF NOT EXISTS analytics.kpi_experiencia_cliente (
-    category            VARCHAR(100),
-    avg_rating          NUMERIC(4,2),
-    return_rate         NUMERIC(6,2),
-    avg_shipping_days   NUMERIC(6,2)
+-- =========================================================
+-- ETL AUDIT LOG (RF13)
+-- =========================================================
+-- Observabilidad y monitoreo ETL.
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.etl_audit_log (
+
+    id SERIAL PRIMARY KEY,
+
+    process_name VARCHAR(100),
+
+    source_file VARCHAR(255),
+
+    batch_id VARCHAR(100),
+
+    rows_processed INTEGER,
+
+    status VARCHAR(50),
+
+    message TEXT,
+
+    execution_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ==========================================
--- KPI SATISFACCION POR CIUDAD (RF5)
--- ==========================================
-CREATE TABLE IF NOT EXISTS analytics.kpi_satisfaccion_ciudad (
-    location        VARCHAR(100),
-    avg_rating      NUMERIC(4,2),
-    total_orders    INTEGER,
-    return_rate     NUMERIC(6,2)
-);
+CREATE INDEX IF NOT EXISTS idx_audit_execution_time
+ON analytics.etl_audit_log(execution_time);
 
--- ==========================================
--- KPI VENDEDORES (RF6)
--- ==========================================
-CREATE TABLE IF NOT EXISTS analytics.kpi_vendedores (
-    seller_id       VARCHAR(50),
-    total_orders    INTEGER,
-    revenue         NUMERIC(14,2),
-    avg_rating      NUMERIC(4,2),
-    return_rate     NUMERIC(6,2)
-);
+CREATE INDEX IF NOT EXISTS idx_audit_status
+ON analytics.etl_audit_log(status);
 
--- ==========================================
--- KPI LOGISTICA POR CIUDAD (RF4)
--- ==========================================
-CREATE TABLE IF NOT EXISTS analytics.kpi_logistica_ciudad (
-    location            VARCHAR(100),
-    avg_shipping_days   NUMERIC(6,2),
-    return_rate         NUMERIC(6,2),
-    total_orders        INTEGER
-);
-
--- ==========================================
--- KPI DEMORAS MENSUALES (RF4)
--- ==========================================
-CREATE TABLE IF NOT EXISTS analytics.kpi_demoras_mensuales (
-    anio            INTEGER,
-    mes             INTEGER,
-    total_delayed   INTEGER,
-    total_orders    INTEGER,
-    pct_delayed     NUMERIC(6,2)
-);
+-- =========================================================
+-- FUTURAS EXTENSIONES
+-- =========================================================
+--
+-- Posibles mejoras:
+--
+-- - Slowly Changing Dimensions (SCD)
+-- - Dimensiones separadas:
+--     dim_products
+--     dim_sellers
+--     dim_customers
+--     dim_dates
+--
+-- - Particionamiento por fecha
+-- - Materialized views
+-- - Incremental loading
+-- - Alertas automáticas Airflow
+-- - Data quality scoring
+--
+-- =========================================================
