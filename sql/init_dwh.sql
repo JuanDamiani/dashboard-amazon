@@ -72,12 +72,17 @@ CREATE TABLE IF NOT EXISTS analytics.processed_files (
 
     id SERIAL PRIMARY KEY,
 
-    file_name VARCHAR(255) UNIQUE NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+
+    file_hash VARCHAR(64),
 
     batch_id VARCHAR(100),
 
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_processed_files_name_hash
+ON analytics.processed_files(file_name, file_hash);
 
 -- =========================================================
 -- FACT TABLE
@@ -344,6 +349,40 @@ CREATE TABLE IF NOT EXISTS analytics.mart_demoras_mensuales (
 
     pct_delayed NUMERIC(6,2)
 );
+
+-- =========================================================
+-- MART: VARIACION RESPECTO AL PERIODO ANTERIOR (RF1, RF3)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.mart_period_variation (
+
+    metric_date DATE,
+
+    period_month DATE,
+
+    total_orders INTEGER,
+
+    total_revenue NUMERIC(14,2),
+
+    avg_ticket NUMERIC(14,2),
+
+    return_rate NUMERIC(6,2),
+
+    avg_product_rating NUMERIC(4,2),
+
+    total_orders_pct_change NUMERIC(14,4),
+
+    total_revenue_pct_change NUMERIC(14,4),
+
+    avg_ticket_pct_change NUMERIC(14,4),
+
+    return_rate_pct_change NUMERIC(14,4),
+
+    avg_product_rating_pct_change NUMERIC(14,4)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mart_period_variation_month
+ON analytics.mart_period_variation(period_month);
 
 -- =========================================================
 -- MART: PAYMENT METHODS (RF1, RF7)

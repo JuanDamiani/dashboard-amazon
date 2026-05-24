@@ -1,8 +1,21 @@
+"""
+Configuracion central del pipeline.
+
+Este archivo concentra rutas, columnas esperadas, valores validos y datos de
+conexion. En terminos del SRS, sostiene RF10 y RF11 porque define donde se
+busca el CSV y cual es la estructura que debe tener antes de procesarse.
+Tambien ayuda a RNF-5/RNF-10 al dejar parametros configurables por entorno.
+"""
+
 import os
 from pathlib import Path
 
 # Rutas
+# INPUT_DIR permite procesar cualquier CSV que aparezca en la carpeta compartida
+# definida por el SRS. ARCHIVO_CSV queda como compatibilidad para ejecuciones
+# manuales que quieran apuntar a un archivo especifico con RUTA_CSV.
 ARCHIVO_CSV = Path(os.getenv("RUTA_CSV", "/opt/airflow/data/input/amazon_ecommerce.csv"))
+INPUT_DIR = Path(os.getenv("INPUT_DIR", str(ARCHIVO_CSV.parent)))
 
 # Columnas
 COLUMNAS_REQUERIDAS = [

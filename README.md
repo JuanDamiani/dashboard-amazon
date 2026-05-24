@@ -52,6 +52,10 @@ Metabase usa su asistente de configuracion inicial en el primer ingreso.
 
 ## Ejecutar El Pipeline
 
+El DAG `amazon_pipeline` corre cada 5 minutos. Busca archivos `*.csv` en `data/input`, selecciona el CSV mas antiguo que todavia no figure en `analytics.processed_files` con el mismo hash de contenido, y procesa ese archivo. Si no hay CSV pendientes, la corrida se saltea.
+
+Para ejecutarlo manualmente:
+
 1. Entrar a Airflow.
 2. Buscar el DAG `amazon_pipeline`.
 3. Activarlo si esta pausado.
@@ -60,8 +64,15 @@ Metabase usa su asistente de configuracion inicial en el primer ingreso.
 El flujo esperado es:
 
 ```text
-validate_csv -> load_staging -> clean_staging -> build_kpis
+check_input_file_available -> check_file_not_processed -> audit_pipeline_start
+-> validate_csv -> load_staging -> clean_staging
+-> KPIs en paralelo -> run_quality_checks -> register_processed_file
+-> audit_pipeline_success -> notify_success
 ```
+
+Cada mart/KPI tiene una tarea propia en Airflow para facilitar trazabilidad y ejecucion paralela.
+
+Para incorporar un nuevo dataset, copiar el archivo CSV a `data/input`. No hace falta que se llame `amazon_ecommerce.csv`; por ejemplo, `amazon_ecommerce_1M.csv` sera detectado si todavia no fue procesado.
 
 ## Conectar Metabase Al Data Warehouse
 
@@ -74,6 +85,15 @@ En el asistente de Metabase, agregar una base PostgreSQL con estos valores por d
 - Password: `dwh123`
 
 Si cambias las variables `DWH_DB_*`, usa esos nuevos valores al configurar Metabase.
+
+## Dashboard Y SRS
+
+La cobertura del SRS y el glosario de indicadores estan documentados en:
+
+- `docs/cobertura_srs_dashboard.md`
+- `docs/glosario_kpis.md`
+
+Metabase se configura desde la interfaz. Para dejar evidencia de entrega, se recomienda crear los dashboards indicados en `docs/cobertura_srs_dashboard.md` y anexar capturas.
 
 ## Variables De Entorno
 
@@ -129,6 +149,32 @@ Seguir logs en vivo:
 
 ```powershell
 docker compose logs -f
+```
+
+## Tests
+
+Las pruebas estan pensadas para ejecutarse dentro del contenedor de Airflow, sin instalar Python en la maquina host:
+
+```powershell
+docker compose run --rm airflow-scheduler python -m unittest discover -s /opt/airflow/tests -t /opt/airflow
+```
+
+Si usas Git Bash en Windows, evita que convierta las rutas Linux del contenedor:
+
+```bash
+MSYS_NO_PATHCONV=1 docker compose run --rm airflow-scheduler python -m unittest discover -s /opt/airflow/tests -t /opt/airflow
+```
+
+Tambien se puede validar compilacion de modulos:
+
+```powershell
+docker compose run --rm airflow-scheduler python -m compileall /opt/airflow/dags /opt/airflow/scripts /opt/airflow/tests
+```
+
+En Git Bash:
+
+```bash
+MSYS_NO_PATHCONV=1 docker compose run --rm airflow-scheduler python -m compileall /opt/airflow/dags /opt/airflow/scripts /opt/airflow/tests
 ```
 
 ## Apagado

@@ -127,6 +127,7 @@ services:
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
       - ./scripts:/opt/airflow/scripts
+      - ./tests:/opt/airflow/tests
 
     depends_on:
       airflow-init:
@@ -177,6 +178,7 @@ services:
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
       - ./scripts:/opt/airflow/scripts
+      - ./tests:/opt/airflow/tests
 
     depends_on:
       airflow-scheduler:
