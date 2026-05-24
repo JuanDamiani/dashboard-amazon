@@ -20,6 +20,81 @@ El proyecto tiene defaults en `docker-compose.yml`, por lo que puede levantarse 
 
 Si queres personalizar puertos o credenciales, copia `.env.example` a `.env` y cambia los valores necesarios. El archivo `.env` es local y no se versiona.
 
+El primer arranque puede tardar unos minutos porque Docker construye la imagen de Airflow, inicializa tres bases PostgreSQL y configura Metabase automaticamente.
+
+Para confirmar que los servicios quedaron levantados:
+
+```powershell
+docker compose ps
+```
+
+Es normal que `metabase-setup` aparezca como `Exited (0)`: es un servicio de configuracion que corre una vez, crea la conexion, dashboards y preguntas, y termina.
+
+## Guia Rapida Para Ver Graficos
+
+1. Levantar el stack:
+
+```powershell
+docker compose up -d --build
+```
+
+2. Copiar un CSV valido a `data/input`.
+
+Ejemplo:
+
+```powershell
+Copy-Item "C:\ruta\al\archivo\amazon_ecommerce.csv" ".\data\input\"
+```
+
+El CSV puede usar separador `,` o `;`. El pipeline detecta el separador automaticamente.
+
+3. Entrar a Airflow:
+
+```text
+http://localhost:8080
+```
+
+Credenciales:
+
+- Usuario: `admin`
+- Password: `admin`
+
+4. Activar o ejecutar el DAG `amazon_pipeline`.
+
+El DAG tambien corre cada 5 minutos. Si el archivo ya estaba en `data/input`, puede procesarse automaticamente.
+
+5. Esperar a que la corrida termine en `success`.
+
+Cuando termina bien:
+
+- el CSV se mueve a `data/processed`;
+- `analytics.fact_orders` queda cargada;
+- los marts `analytics.mart_*` se recalculan;
+- Metabase ya puede mostrar los graficos con datos.
+
+6. Entrar a Metabase:
+
+```text
+http://localhost:3000
+```
+
+Credenciales:
+
+- Usuario: `admin@local.test`
+- Password: `AdminLocal2026!`
+
+7. Abrir la coleccion `Amazon E-Commerce`.
+
+Dentro de esa coleccion se crean automaticamente estos dashboards:
+
+- `Resumen`
+- `Ventas`
+- `Logistica`
+- `Clientes`
+- `Vendedores`
+
+Cada dashboard tiene filtros globales de fecha de compra, categoria, ciudad, dispositivo y metodo de pago.
+
 ## Uso Posterior
 
 Para levantar servicios ya construidos:
@@ -48,8 +123,7 @@ Airflow crea el usuario inicial:
 - Usuario: `admin`
 - Password: `admin`
 
-Metabase usa su asistente de configuracion inicial en el primer ingreso.
-El servicio `metabase-setup` lo completa automaticamente en instalaciones nuevas y crea los dashboards del proyecto.
+El servicio `metabase-setup` completa automaticamente el asistente inicial en instalaciones nuevas y crea los dashboards del proyecto.
 
 Credenciales Metabase por defecto:
 
@@ -59,6 +133,21 @@ Credenciales Metabase por defecto:
 ## Ejecutar El Pipeline
 
 El DAG `amazon_pipeline` corre cada 5 minutos. Busca archivos `*.csv` en `data/input`, selecciona el CSV mas antiguo que todavia no figure en `analytics.processed_files` con el mismo hash de contenido, y procesa un archivo por corrida. Si no hay CSV pendientes, la corrida se saltea.
+
+Antes de ejecutarlo, copiar un archivo CSV a:
+
+```text
+data/input
+```
+
+Columnas requeridas:
+
+```text
+user_id, product_id, category, subcategory, brand, price, discount,
+final_price, rating, review_count, stock, seller_id, seller_rating,
+purchase_date, shipping_time_days, location, device, payment_method,
+is_returned, delivery_status
+```
 
 Para ejecutarlo manualmente:
 
@@ -90,9 +179,34 @@ Para incorporar un nuevo dataset, copiar el archivo CSV a `data/input`. No hace 
 
 Cuando una corrida termina correctamente, el CSV se registra en `analytics.processed_files` y se mueve a `data/processed`. Si falla, se registra el fallo en `analytics.etl_audit_log`, se guarda el resumen en `analytics.validation_summary` cuando aplica, y el archivo se mueve a `data/rejected` para evitar reintentos infinitos.
 
-## Conectar Metabase Al Data Warehouse
+## Metabase Y Dashboards
 
-El servicio `metabase-setup` crea automaticamente la conexion `Amazon DWH`.
+El servicio `metabase-setup` crea automaticamente:
+
+- usuario inicial de Metabase;
+- conexion `Amazon DWH`;
+- coleccion `Amazon E-Commerce`;
+- preguntas SQL;
+- dashboards `Resumen`, `Ventas`, `Logistica`, `Clientes` y `Vendedores`;
+- filtros globales conectados a las preguntas.
+
+Si los dashboards aparecen vacios, primero verificar que el DAG `amazon_pipeline` haya terminado correctamente con un CSV cargado.
+
+Para ver el resultado del setup automatico:
+
+```powershell
+docker compose logs metabase-setup
+```
+
+Para reprovisionar Metabase manualmente sin reiniciar todo el stack:
+
+```powershell
+docker compose run --rm metabase-setup
+```
+
+### Conexion Manual Al Data Warehouse
+
+Normalmente no hace falta. El servicio `metabase-setup` crea automaticamente la conexion `Amazon DWH`.
 Si necesitas configurarla manualmente, usar estos valores:
 
 - Host: `postgres-dwh`
@@ -103,12 +217,6 @@ Si necesitas configurarla manualmente, usar estos valores:
 
 Si cambias las variables `DWH_DB_*`, usa esos nuevos valores al configurar Metabase.
 
-Para reprovisionar Metabase manualmente sin reiniciar todo el stack:
-
-```powershell
-docker compose run --rm metabase-setup
-```
-
 ## Dashboard Y SRS
 
 La cobertura del SRS y el glosario de indicadores estan documentados en:
@@ -118,7 +226,7 @@ La cobertura del SRS y el glosario de indicadores estan documentados en:
 - `docs/metabase_preguntas_dashboards.md`
 - `docs/evidencia_metabase.md`
 
-Metabase se configura desde la interfaz. Para dejar evidencia de entrega, se recomienda crear los dashboards indicados en `docs/cobertura_srs_dashboard.md`, usar las preguntas SQL de `docs/metabase_preguntas_dashboards.md` y anexar capturas.
+Los dashboards se crean automaticamente con `scripts/metabase_auto_setup.py`. Las preguntas SQL tambien quedan documentadas en `docs/metabase_preguntas_dashboards.md` para que puedan revisarse o recrearse manualmente si fuera necesario.
 
 ## Variables De Entorno
 
