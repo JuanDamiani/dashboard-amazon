@@ -19,6 +19,7 @@ from scripts.config import (
 )
 from scripts.utils.csv_reader import read_csv_auto
 from scripts.utils.input_file import get_selected_csv_path
+from scripts.utils.validation_summary import record_validation_summary
 
 
 def verificar_archivo(file_path):
@@ -148,6 +149,11 @@ def validate_csv(**context):
     errores = verificar_columnas(df, errores)
     if errores:
         _mostrar_resultado(errores, advertencias, total_filas)
+        record_validation_summary(file_path, total_filas, errores, advertencias)
+        if context.get("ti"):
+            context["ti"].xcom_push(key="validation_rows_total", value=int(total_filas))
+            context["ti"].xcom_push(key="validation_error_count", value=len(errores))
+            context["ti"].xcom_push(key="validation_warning_count", value=len(advertencias))
         raise ValueError("Validacion fallida: columnas faltantes")
 
     errores = verificar_nulos(df, errores)
@@ -159,9 +165,15 @@ def validate_csv(**context):
     advertencias = verificar_rangos_sospechosos(df, advertencias)
 
     _mostrar_resultado(errores, advertencias, total_filas)
+    record_validation_summary(file_path, total_filas, errores, advertencias)
 
     if errores:
         raise ValueError(f"Validacion fallida: {len(errores)} error(es) encontrado(s)")
+
+    if context.get("ti"):
+        context["ti"].xcom_push(key="validation_rows_total", value=int(total_filas))
+        context["ti"].xcom_push(key="validation_error_count", value=len(errores))
+        context["ti"].xcom_push(key="validation_warning_count", value=len(advertencias))
 
     print("Validacion exitosa")
 

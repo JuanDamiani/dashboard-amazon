@@ -492,6 +492,12 @@ CREATE TABLE IF NOT EXISTS analytics.etl_audit_log (
 
     rows_processed INTEGER,
 
+    rows_read INTEGER,
+
+    rows_loaded INTEGER,
+
+    rows_rejected INTEGER,
+
     status VARCHAR(50),
 
     message TEXT,
@@ -504,6 +510,36 @@ ON analytics.etl_audit_log(execution_time);
 
 CREATE INDEX IF NOT EXISTS idx_audit_status
 ON analytics.etl_audit_log(status);
+
+-- =========================================================
+-- VALIDATION SUMMARY (RF11, RF13)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS analytics.validation_summary (
+
+    id SERIAL PRIMARY KEY,
+
+    file_name VARCHAR(255),
+
+    file_hash VARCHAR(64),
+
+    rows_total INTEGER,
+
+    error_count INTEGER,
+
+    warning_count INTEGER,
+
+    status VARCHAR(50),
+
+    errors TEXT,
+
+    warnings TEXT,
+
+    validated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_validation_summary_file
+ON analytics.validation_summary(file_name);
 
 -- =========================================================
 -- FUTURAS EXTENSIONES

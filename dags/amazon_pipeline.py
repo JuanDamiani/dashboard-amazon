@@ -31,6 +31,7 @@ from scripts.kpis.seller_performance import build_seller_performance
 from scripts.load.load_staging import load_staging
 from scripts.transform.clean_staging import clean_staging
 from scripts.utils.audit import log_pipeline_start, log_pipeline_success
+from scripts.utils.file_lifecycle import move_processed_file
 from scripts.utils.input_file import check_input_file_available
 from scripts.utils.notify_status import notify_failure, notify_success
 from scripts.utils.quality_checks import run_quality_checks
@@ -40,7 +41,7 @@ from scripts.validation.validate_csv import validate_csv
 
 default_args = {
     "owner": "amazon-team",
-    "retries": 1,
+    "retries": 0,
 }
 
 
@@ -132,6 +133,11 @@ with DAG(
         python_callable=notify_success,
     )
 
+    move_processed_task = PythonOperator(
+        task_id="move_processed_file",
+        python_callable=move_processed_file,
+    )
+
     (
         check_file_available_task
         >> check_not_processed_task
@@ -143,5 +149,6 @@ with DAG(
         >> quality_task
         >> register_file_task
         >> audit_success_task
+        >> move_processed_task
         >> notify_success_task
     )

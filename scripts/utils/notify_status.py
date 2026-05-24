@@ -7,6 +7,7 @@ de auditoria. En una version productiva podria conectarse a SMTP o a alertas.
 """
 
 from scripts.utils.audit import log_pipeline_failure
+from scripts.utils.file_lifecycle import move_rejected_file
 
 
 def notify_success(**context):
@@ -17,4 +18,5 @@ def notify_success(**context):
 def notify_failure(context):
     """Notification hook for a failed pipeline run."""
     log_pipeline_failure(context)
+    move_rejected_file(context)
     print("Pipeline fallo. Revisar logs de Airflow.")

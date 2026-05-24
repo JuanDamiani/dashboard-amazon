@@ -80,7 +80,9 @@ class CsvValidationTests(unittest.TestCase):
             csv_path = Path(tmp) / "amazon.csv"
             write_csv(csv_path, [VALID_ROW])
 
-            with patch.object(validation, "get_selected_csv_path", return_value=csv_path):
+            with patch.object(validation, "get_selected_csv_path", return_value=csv_path), patch.object(
+                validation, "record_validation_summary"
+            ):
                 validation.validate_csv()
 
     def test_valid_comma_csv_passes(self):
@@ -88,7 +90,9 @@ class CsvValidationTests(unittest.TestCase):
             csv_path = Path(tmp) / "amazon_comma.csv"
             write_comma_csv(csv_path, [VALID_ROW])
 
-            with patch.object(validation, "get_selected_csv_path", return_value=csv_path):
+            with patch.object(validation, "get_selected_csv_path", return_value=csv_path), patch.object(
+                validation, "record_validation_summary"
+            ):
                 validation.validate_csv()
 
     def test_missing_column_fails(self):
@@ -98,7 +102,9 @@ class CsvValidationTests(unittest.TestCase):
             row = {key: value for key, value in VALID_ROW.items() if key != "seller_id"}
             write_csv(csv_path, [row], columns=columns)
 
-            with patch.object(validation, "get_selected_csv_path", return_value=csv_path):
+            with patch.object(validation, "get_selected_csv_path", return_value=csv_path), patch.object(
+                validation, "record_validation_summary"
+            ):
                 with self.assertRaises(ValueError):
                     validation.validate_csv()
 

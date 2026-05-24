@@ -110,6 +110,11 @@ def load_staging(**context):
     batch_id = str(uuid.uuid4())
     file_path = get_selected_csv_path(context)
     file_name = file_path.name
+    ti = context.get("ti")
+
+    if ti:
+        ti.xcom_push(key="batch_id", value=batch_id)
+        ti.xcom_push(key="input_csv_name", value=file_name)
 
     total_leidas = 0
     total_cargadas = 0
@@ -126,14 +131,20 @@ def load_staging(**context):
         chunk = eliminar_nulos_criticos(chunk)
         raw_chunk = convertir_a_jsonb(chunk, file_name, batch_id)
         total_cargadas += cargar_en_postgresql(raw_chunk)
+        if ti:
+            ti.xcom_push(key="rows_read", value=total_leidas)
+            ti.xcom_push(key="rows_loaded", value=total_cargadas)
+            ti.xcom_push(key="rows_rejected", value=total_leidas - total_cargadas)
 
     print(f"Filas leidas totales: {total_leidas:,}")
     print(f"Filas cargadas totales: {total_cargadas:,}")
 
-    if context.get("ti"):
-        context["ti"].xcom_push(key="batch_id", value=batch_id)
-        context["ti"].xcom_push(key="input_csv_name", value=file_name)
-        context["ti"].xcom_push(key="rows_loaded", value=total_cargadas)
+    if ti:
+        ti.xcom_push(key="batch_id", value=batch_id)
+        ti.xcom_push(key="input_csv_name", value=file_name)
+        ti.xcom_push(key="rows_read", value=total_leidas)
+        ti.xcom_push(key="rows_loaded", value=total_cargadas)
+        ti.xcom_push(key="rows_rejected", value=total_leidas - total_cargadas)
 
     print("=" * 50)
     print("Carga Bronze finalizada")

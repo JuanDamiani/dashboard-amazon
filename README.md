@@ -52,7 +52,7 @@ Metabase usa su asistente de configuracion inicial en el primer ingreso.
 
 ## Ejecutar El Pipeline
 
-El DAG `amazon_pipeline` corre cada 5 minutos. Busca archivos `*.csv` en `data/input`, selecciona el CSV mas antiguo que todavia no figure en `analytics.processed_files` con el mismo hash de contenido, y procesa ese archivo. Si no hay CSV pendientes, la corrida se saltea.
+El DAG `amazon_pipeline` corre cada 5 minutos. Busca archivos `*.csv` en `data/input`, selecciona el CSV mas antiguo que todavia no figure en `analytics.processed_files` con el mismo hash de contenido, y procesa un archivo por corrida. Si no hay CSV pendientes, la corrida se saltea.
 
 Para ejecutarlo manualmente:
 
@@ -73,6 +73,8 @@ check_input_file_available -> check_file_not_processed -> audit_pipeline_start
 Cada mart/KPI tiene una tarea propia en Airflow para facilitar trazabilidad y ejecucion paralela.
 
 Para incorporar un nuevo dataset, copiar el archivo CSV a `data/input`. No hace falta que se llame `amazon_ecommerce.csv`; por ejemplo, `amazon_ecommerce_1M.csv` sera detectado si todavia no fue procesado.
+
+Cuando una corrida termina correctamente, el CSV se registra en `analytics.processed_files` y se mueve a `data/processed`. Si falla, se registra el fallo en `analytics.etl_audit_log`, se guarda el resumen en `analytics.validation_summary` cuando aplica, y el archivo se mueve a `data/rejected` para evitar reintentos infinitos.
 
 ## Conectar Metabase Al Data Warehouse
 

@@ -16,6 +16,8 @@ from pathlib import Path
 # manuales que quieran apuntar a un archivo especifico con RUTA_CSV.
 ARCHIVO_CSV = Path(os.getenv("RUTA_CSV", "/opt/airflow/data/input/amazon_ecommerce.csv"))
 INPUT_DIR = Path(os.getenv("INPUT_DIR", str(ARCHIVO_CSV.parent)))
+PROCESSED_DIR = Path(os.getenv("PROCESSED_DIR", "/opt/airflow/data/processed"))
+REJECTED_DIR = Path(os.getenv("REJECTED_DIR", "/opt/airflow/data/rejected"))
 
 # Columnas
 COLUMNAS_REQUERIDAS = [

@@ -39,6 +39,12 @@ logs/*
 data/output/*
 !data/output/.gitkeep
 
+data/processed/*
+!data/processed/.gitkeep
+
+data/rejected/*
+!data/rejected/.gitkeep
+
 # Opcional:
 # descomentá esto si NO quieren subir datasets
 # data/input/*
