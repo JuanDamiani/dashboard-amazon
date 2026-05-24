@@ -238,6 +238,47 @@ services:
     networks:
       - amazon-network
 
+  # ==========================================
+  # METABASE AUTO SETUP
+  # ==========================================
+  metabase-setup:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+
+    container_name: metabase-setup
+    restart: "no"
+
+    command: python /opt/airflow/scripts/metabase_auto_setup.py
+
+    environment:
+      METABASE_URL: http://metabase:3000
+      METABASE_ADMIN_EMAIL: ${METABASE_ADMIN_EMAIL:-admin@local.test}
+      METABASE_ADMIN_PASSWORD: ${METABASE_ADMIN_PASSWORD:-AdminLocal2026!}
+      METABASE_ADMIN_FIRST_NAME: ${METABASE_ADMIN_FIRST_NAME:-Admin}
+      METABASE_ADMIN_LAST_NAME: ${METABASE_ADMIN_LAST_NAME:-Local}
+      METABASE_SITE_NAME: ${METABASE_SITE_NAME:-Amazon E-Commerce Dashboard}
+      METABASE_DWH_NAME: ${METABASE_DWH_NAME:-Amazon DWH}
+      METABASE_COLLECTION_NAME: ${METABASE_COLLECTION_NAME:-Amazon E-Commerce}
+      DWH_DB_USER: ${DWH_DB_USER:-dwh}
+      DWH_DB_PASSWORD: ${DWH_DB_PASSWORD:-dwh123}
+      DWH_DB_HOST: ${DWH_DB_HOST:-postgres-dwh}
+      DWH_DB_PORT: ${DWH_DB_PORT:-5432}
+      DWH_DB_NAME: ${DWH_DB_NAME:-amazon_dwh}
+
+    volumes:
+      - ./scripts:/opt/airflow/scripts
+
+    depends_on:
+      metabase:
+        condition: service_started
+
+      postgres-dwh:
+        condition: service_healthy
+
+    networks:
+      - amazon-network
+
 networks:
   amazon-network:
     driver: bridge

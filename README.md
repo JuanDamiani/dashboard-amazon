@@ -49,6 +49,12 @@ Airflow crea el usuario inicial:
 - Password: `admin`
 
 Metabase usa su asistente de configuracion inicial en el primer ingreso.
+El servicio `metabase-setup` lo completa automaticamente en instalaciones nuevas y crea los dashboards del proyecto.
+
+Credenciales Metabase por defecto:
+
+- Usuario: `admin@local.test`
+- Password: `AdminLocal2026!`
 
 ## Ejecutar El Pipeline
 
@@ -86,7 +92,8 @@ Cuando una corrida termina correctamente, el CSV se registra en `analytics.proce
 
 ## Conectar Metabase Al Data Warehouse
 
-En el asistente de Metabase, agregar una base PostgreSQL con estos valores por defecto:
+El servicio `metabase-setup` crea automaticamente la conexion `Amazon DWH`.
+Si necesitas configurarla manualmente, usar estos valores:
 
 - Host: `postgres-dwh`
 - Puerto: `5432`
@@ -96,14 +103,22 @@ En el asistente de Metabase, agregar una base PostgreSQL con estos valores por d
 
 Si cambias las variables `DWH_DB_*`, usa esos nuevos valores al configurar Metabase.
 
+Para reprovisionar Metabase manualmente sin reiniciar todo el stack:
+
+```powershell
+docker compose run --rm metabase-setup
+```
+
 ## Dashboard Y SRS
 
 La cobertura del SRS y el glosario de indicadores estan documentados en:
 
 - `docs/cobertura_srs_dashboard.md`
 - `docs/glosario_kpis.md`
+- `docs/metabase_preguntas_dashboards.md`
+- `docs/evidencia_metabase.md`
 
-Metabase se configura desde la interfaz. Para dejar evidencia de entrega, se recomienda crear los dashboards indicados en `docs/cobertura_srs_dashboard.md` y anexar capturas.
+Metabase se configura desde la interfaz. Para dejar evidencia de entrega, se recomienda crear los dashboards indicados en `docs/cobertura_srs_dashboard.md`, usar las preguntas SQL de `docs/metabase_preguntas_dashboards.md` y anexar capturas.
 
 ## Variables De Entorno
 
@@ -135,6 +150,16 @@ Base interna de Metabase:
 - `METABASE_DB_USER`
 - `METABASE_DB_PASSWORD`
 - `METABASE_DB_NAME`
+
+Setup automatico de Metabase:
+
+- `METABASE_ADMIN_EMAIL`
+- `METABASE_ADMIN_PASSWORD`
+- `METABASE_ADMIN_FIRST_NAME`
+- `METABASE_ADMIN_LAST_NAME`
+- `METABASE_SITE_NAME`
+- `METABASE_DWH_NAME`
+- `METABASE_COLLECTION_NAME`
 
 Los scripts Python construyen `DB_URL` desde `DWH_DB_*` si no se define manualmente.
 

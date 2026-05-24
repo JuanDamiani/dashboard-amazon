@@ -25,7 +25,13 @@ Este documento deja evidencia de que visualizacion o tabla cubre cada requisito 
 2. Crear una coleccion llamada `Amazon E-Commerce`.
 3. Crear dashboards: `Resumen`, `Ventas`, `Logistica`, `Clientes`, `Vendedores`.
 4. Agregar filtros globales de fecha, categoria, ciudad, dispositivo y metodo de pago.
-5. Crear preguntas basadas en los marts listados en la matriz.
+5. Crear preguntas basadas en los marts listados en la matriz y en `docs/metabase_preguntas_dashboards.md`.
 6. Validar que cada pregunta permita descarga CSV.
 7. Tomar capturas del dashboard final para anexarlas a la entrega.
 
+## Preguntas SQL Documentadas
+
+Las preguntas SQL listas para cargar en Metabase estan en
+`docs/metabase_preguntas_dashboards.md`. Ese documento tambien incluye las
+visualizaciones faltantes del diagnostico: descuento vs ordenes, distribucion de
+rating, metodo de pago vs devolucion y demora vs devolucion.
