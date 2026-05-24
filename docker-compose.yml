@@ -12,17 +12,18 @@ services:
   postgres-airflow:
     image: postgres:15-alpine
     container_name: postgres-airflow
+    restart: unless-stopped
 
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
+      POSTGRES_USER: ${AIRFLOW_DB_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow}
+      POSTGRES_DB: ${AIRFLOW_DB_NAME:-airflow}
 
     volumes:
       - postgres_airflow_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      test: ["CMD-SHELL", "pg_isready -U ${AIRFLOW_DB_USER:-airflow} -d ${AIRFLOW_DB_NAME:-airflow}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -36,18 +37,19 @@ services:
   postgres-dwh:
     image: postgres:15-alpine
     container_name: postgres-dwh
+    restart: unless-stopped
 
     environment:
-      POSTGRES_USER: dwh
-      POSTGRES_PASSWORD: dwh123
-      POSTGRES_DB: amazon_dwh
+      POSTGRES_USER: ${DWH_DB_USER:-dwh}
+      POSTGRES_PASSWORD: ${DWH_DB_PASSWORD:-dwh123}
+      POSTGRES_DB: ${DWH_DB_NAME:-amazon_dwh}
 
     volumes:
       - postgres_dwh_data:/var/lib/postgresql/data
       - ./sql/init_dwh.sql:/docker-entrypoint-initdb.d/01_init.sql
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dwh"]
+      test: ["CMD-SHELL", "pg_isready -U ${DWH_DB_USER:-dwh} -d ${DWH_DB_NAME:-amazon_dwh}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -67,12 +69,13 @@ services:
 
     command: >
       bash -c "airflow db migrate &&
-      airflow users create -u admin -p admin -f Admin -l User -r Admin -e admin@example.com"
+      (airflow users list --output json | grep -q '\"username\": \"admin\"' ||
+      airflow users create -u admin -p admin -f Admin -l User -r Admin -e admin@example.com)"
       
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
 
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:-airflow}@postgres-airflow:5432/${AIRFLOW_DB_NAME:-airflow}
 
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
 
@@ -98,17 +101,24 @@ services:
       dockerfile: Dockerfile.airflow
 
     container_name: airflow-scheduler
+    restart: unless-stopped
 
     command: airflow scheduler
 
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
 
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:-airflow}@postgres-airflow:5432/${AIRFLOW_DB_NAME:-airflow}
 
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
 
-      AIRFLOW_CONN_POSTGRES_DWH: postgres://dwh:dwh123@postgres-dwh:5432/amazon_dwh
+      DWH_DB_USER: ${DWH_DB_USER:-dwh}
+      DWH_DB_PASSWORD: ${DWH_DB_PASSWORD:-dwh123}
+      DWH_DB_HOST: ${DWH_DB_HOST:-postgres-dwh}
+      DWH_DB_PORT: ${DWH_DB_PORT:-5432}
+      DWH_DB_NAME: ${DWH_DB_NAME:-amazon_dwh}
+
+      AIRFLOW_CONN_POSTGRES_DWH: ${AIRFLOW_CONN_POSTGRES_DWH:-postgres://${DWH_DB_USER:-dwh}:${DWH_DB_PASSWORD:-dwh123}@${DWH_DB_HOST:-postgres-dwh}:${DWH_DB_PORT:-5432}/${DWH_DB_NAME:-amazon_dwh}}
 
       PYTHONPATH: /opt/airflow
 
@@ -140,18 +150,25 @@ services:
       dockerfile: Dockerfile.airflow
 
     container_name: airflow-webserver
+    restart: unless-stopped
 
     command: airflow webserver
 
     ports:
-      - "8080:8080"
+      - "${AIRFLOW_PORT:-8080}:8080"
 
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
 
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:-airflow}@postgres-airflow:5432/${AIRFLOW_DB_NAME:-airflow}
 
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+
+      DWH_DB_USER: ${DWH_DB_USER:-dwh}
+      DWH_DB_PASSWORD: ${DWH_DB_PASSWORD:-dwh123}
+      DWH_DB_HOST: ${DWH_DB_HOST:-postgres-dwh}
+      DWH_DB_PORT: ${DWH_DB_PORT:-5432}
+      DWH_DB_NAME: ${DWH_DB_NAME:-amazon_dwh}
 
       PYTHONPATH: /opt/airflow
 
@@ -174,17 +191,18 @@ services:
   postgres-metabase:
     image: postgres:15-alpine
     container_name: postgres-metabase
+    restart: unless-stopped
 
     environment:
-      POSTGRES_USER: metabase
-      POSTGRES_PASSWORD: metabase123
-      POSTGRES_DB: metabase
+      POSTGRES_USER: ${METABASE_DB_USER:-metabase}
+      POSTGRES_PASSWORD: ${METABASE_DB_PASSWORD:-metabase123}
+      POSTGRES_DB: ${METABASE_DB_NAME:-metabase}
 
     volumes:
       - postgres_metabase_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U metabase"]
+      test: ["CMD-SHELL", "pg_isready -U ${METABASE_DB_USER:-metabase} -d ${METABASE_DB_NAME:-metabase}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -196,18 +214,19 @@ services:
   # METABASE
   # ==========================================
   metabase:
-    image: metabase/metabase:latest
+    image: metabase/metabase:v0.49.14
     container_name: metabase
+    restart: unless-stopped
 
     ports:
-      - "3000:3000"
+      - "${METABASE_PORT:-3000}:3000"
 
     environment:
       MB_DB_TYPE: postgres
-      MB_DB_DBNAME: metabase
+      MB_DB_DBNAME: ${METABASE_DB_NAME:-metabase}
       MB_DB_PORT: 5432
-      MB_DB_USER: metabase
-      MB_DB_PASS: metabase123
+      MB_DB_USER: ${METABASE_DB_USER:-metabase}
+      MB_DB_PASS: ${METABASE_DB_PASSWORD:-metabase123}
       MB_DB_HOST: postgres-metabase
 
     depends_on:

@@ -1,7 +1,7 @@
-import json
 import uuid
 import pandas as pd
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import JSONB
 from scripts.utils.db import engine
 from scripts.config import ARCHIVO_CSV, CSV_SEPARATOR, COLUMNAS_CRITICAS
 
@@ -50,7 +50,7 @@ def convertir_a_jsonb(df, file_name, batch_id):
         raw_rows.append({
             "source_file": str(file_name),
             "batch_id": batch_id,
-            "raw_payload": json.dumps(row.to_dict(), default=str)
+            "raw_payload": row.to_dict()
         })
     return pd.DataFrame(raw_rows)
 
@@ -65,7 +65,8 @@ def cargar_en_postgresql(df):
         engine,
         schema="staging",
         if_exists="append",
-        index=False
+        index=False,
+        dtype={"raw_payload": JSONB()}
     )
     print(f"Carga completada: {len(df):,} filas en staging.amazon_sales_raw")
 

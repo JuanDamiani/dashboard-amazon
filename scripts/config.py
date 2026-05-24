@@ -21,7 +21,7 @@ COLUMNAS_CRITICAS = [
 
 COLUMNAS_NUMERICAS = [
     "price", "discount", "final_price",
-    "rating", "stock", "seller_rating", "shipping_time_days"
+    "rating", "review_count", "stock", "seller_rating", "shipping_time_days"
 ]
 
 VALORES_ESTRICTOS = {
@@ -36,7 +36,16 @@ VALORES_ADVERTENCIA = {
 }
 
 
-# Conexión a PostgreSQL
-DB_URL = "postgresql+psycopg2://dwh:dwh123@postgres-dwh:5432/amazon_dwh"
+# Conexion a PostgreSQL
+DWH_DB_USER = os.getenv("DWH_DB_USER", "dwh")
+DWH_DB_PASSWORD = os.getenv("DWH_DB_PASSWORD", "dwh123")
+DWH_DB_HOST = os.getenv("DWH_DB_HOST", "postgres-dwh")
+DWH_DB_PORT = os.getenv("DWH_DB_PORT", "5432")
+DWH_DB_NAME = os.getenv("DWH_DB_NAME", "amazon_dwh")
+
+DB_URL = os.getenv(
+    "DB_URL",
+    f"postgresql+psycopg2://{DWH_DB_USER}:{DWH_DB_PASSWORD}@{DWH_DB_HOST}:{DWH_DB_PORT}/{DWH_DB_NAME}"
+)
 
 CSV_SEPARATOR = ";"

@@ -26,7 +26,7 @@ def build_sales_summary(engine):
     tiempo de envío promedio y tasa de devolución.
     """
     query = """
-        INSERT INTO analytics.kpi_sales_summary
+        INSERT INTO analytics.mart_sales_summary
         SELECT
             CURRENT_DATE                          AS metric_date,
             COUNT(*)                              AS total_orders,
@@ -35,13 +35,13 @@ def build_sales_summary(engine):
             AVG(rating)                           AS avg_product_rating,
             AVG(seller_rating)                    AS avg_seller_rating,
             AVG(shipping_time_days)               AS avg_shipping_days,
-            AVG(CASE WHEN is_returned = 'true' THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
-        FROM staging.amazon_sales_clean
+            AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
+        FROM analytics.fact_orders
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_sales_summary"))
+        conn.execute(text("DELETE FROM analytics.mart_sales_summary"))
         conn.execute(text(query))
-    print("kpi_sales_summary calculado")
+    print("mart_sales_summary calculado")
 
 
 def build_top_categories(engine):
@@ -50,21 +50,22 @@ def build_top_categories(engine):
     y descuento promedio por categoría.
     """
     query = """
-        INSERT INTO analytics.kpi_top_categories
+        INSERT INTO analytics.mart_sales_by_category
         SELECT
+            CURRENT_DATE       AS metric_date,
             category,
             COUNT(*)            AS total_orders,
-            SUM(final_price)    AS revenue,
+            SUM(final_price)    AS total_revenue,
             AVG(rating)         AS avg_rating,
             AVG(discount)       AS avg_discount
-        FROM staging.amazon_sales_clean
+        FROM analytics.fact_orders
         GROUP BY category
-        ORDER BY revenue DESC
+        ORDER BY total_revenue DESC
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_top_categories"))
+        conn.execute(text("DELETE FROM analytics.mart_sales_by_category"))
         conn.execute(text(query))
-    print("kpi_top_categories calculado")
+    print("mart_sales_by_category calculado")
 
 
 def build_top_brands(engine):
@@ -73,21 +74,22 @@ def build_top_brands(engine):
     y seller rating promedio por marca.
     """
     query = """
-        INSERT INTO analytics.kpi_top_brands
+        INSERT INTO analytics.mart_sales_by_brand
         SELECT
+            CURRENT_DATE       AS metric_date,
             brand,
-            COUNT(*)            AS total_sales,
-            SUM(final_price)    AS revenue,
+            COUNT(*)            AS total_orders,
+            SUM(final_price)    AS total_revenue,
             AVG(rating)         AS avg_rating,
             AVG(seller_rating)  AS avg_seller_rating
-        FROM staging.amazon_sales_clean
+        FROM analytics.fact_orders
         GROUP BY brand
-        ORDER BY revenue DESC
+        ORDER BY total_revenue DESC
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_top_brands"))
+        conn.execute(text("DELETE FROM analytics.mart_sales_by_brand"))
         conn.execute(text(query))
-    print("kpi_top_brands calculado")
+    print("mart_sales_by_brand calculado")
 
 
 def build_delivery_metrics(engine):
@@ -97,19 +99,20 @@ def build_delivery_metrics(engine):
     y tasa de devolución.
     """
     query = """
-        INSERT INTO analytics.kpi_delivery_metrics
+        INSERT INTO analytics.mart_logistics
         SELECT
+            CURRENT_DATE       AS metric_date,
             delivery_status,
             COUNT(*)                                                   AS total_orders,
             AVG(shipping_time_days)                                    AS avg_shipping_days,
-            AVG(CASE WHEN is_returned = 'true' THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
-        FROM staging.amazon_sales_clean
+            AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
+        FROM analytics.fact_orders
         GROUP BY delivery_status
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_delivery_metrics"))
+        conn.execute(text("DELETE FROM analytics.mart_logistics"))
         conn.execute(text(query))
-    print("kpi_delivery_metrics calculado")
+    print("mart_logistics calculado")
 
 
 def build_payment_methods(engine):
@@ -118,20 +121,21 @@ def build_payment_methods(engine):
     ticket promedio por método de pago.
     """
     query = """
-        INSERT INTO analytics.kpi_payment_methods
+        INSERT INTO analytics.mart_payment_methods
         SELECT
+            CURRENT_DATE       AS metric_date,
             payment_method,
             COUNT(*)            AS total_orders,
-            SUM(final_price)    AS revenue,
+            SUM(final_price)    AS total_revenue,
             AVG(final_price)    AS avg_ticket
-        FROM staging.amazon_sales_clean
+        FROM analytics.fact_orders
         GROUP BY payment_method
-        ORDER BY revenue DESC
+        ORDER BY total_revenue DESC
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_payment_methods"))
+        conn.execute(text("DELETE FROM analytics.mart_payment_methods"))
         conn.execute(text(query))
-    print("kpi_payment_methods calculado")
+    print("mart_payment_methods calculado")
 
 
 def build_returns(engine):
@@ -139,20 +143,21 @@ def build_returns(engine):
     Calcula la tasa de devolución por categoría.
     """
     query = """
-        INSERT INTO analytics.kpi_returns
+        INSERT INTO analytics.mart_returns
         SELECT
+            CURRENT_DATE       AS metric_date,
             category,
-            SUM(CASE WHEN is_returned = 'true' THEN 1 ELSE 0 END)        AS returned_orders,
+            SUM(CASE WHEN is_returned THEN 1 ELSE 0 END)        AS returned_orders,
             COUNT(*)                                                       AS total_orders,
-            AVG(CASE WHEN is_returned = 'true' THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
-        FROM staging.amazon_sales_clean
+            AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
+        FROM analytics.fact_orders
         GROUP BY category
         ORDER BY return_rate DESC
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_returns"))
+        conn.execute(text("DELETE FROM analytics.mart_returns"))
         conn.execute(text(query))
-    print("kpi_returns calculado")
+    print("mart_returns calculado")
 
 
 def build_ventas_mensuales(engine):
@@ -161,21 +166,22 @@ def build_ventas_mensuales(engine):
     total de órdenes, ingresos y ticket promedio.
     """
     query = """
-        INSERT INTO analytics.kpi_ventas_mensuales
+        INSERT INTO analytics.mart_ventas_mensuales
         SELECT
-            EXTRACT(YEAR FROM purchase_date)    AS anio,
-            EXTRACT(MONTH FROM purchase_date)   AS mes,
+            CURRENT_DATE                       AS metric_date,
+            EXTRACT(YEAR FROM purchase_date)::INTEGER    AS anio,
+            EXTRACT(MONTH FROM purchase_date)::INTEGER   AS mes,
             COUNT(*)                            AS total_orders,
             SUM(final_price)                    AS revenue,
             AVG(final_price)                    AS avg_ticket
-        FROM staging.amazon_sales_clean
+        FROM analytics.fact_orders
         GROUP BY anio, mes
         ORDER BY anio, mes
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_ventas_mensuales"))
+        conn.execute(text("DELETE FROM analytics.mart_ventas_mensuales"))
         conn.execute(text(query))
-    print("kpi_ventas_mensuales calculado")
+    print("mart_ventas_mensuales calculado")
 
 
 def build_ventas_dispositivo(engine):
@@ -184,20 +190,21 @@ def build_ventas_dispositivo(engine):
     dispositivo y categoría.
     """
     query = """
-        INSERT INTO analytics.kpi_ventas_dispositivo
+        INSERT INTO analytics.mart_ventas_dispositivo
         SELECT
+            CURRENT_DATE       AS metric_date,
             device,
             category,
             COUNT(*)            AS total_orders,
             SUM(final_price)    AS revenue
-        FROM staging.amazon_sales_clean
+        FROM analytics.fact_orders
         GROUP BY device, category
         ORDER BY revenue DESC
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_ventas_dispositivo"))
+        conn.execute(text("DELETE FROM analytics.mart_ventas_dispositivo"))
         conn.execute(text(query))
-    print("kpi_ventas_dispositivo calculado")
+    print("mart_ventas_dispositivo calculado")
 
 
 def build_experiencia_cliente(engine):
@@ -206,20 +213,21 @@ def build_experiencia_cliente(engine):
     y tiempo de envío promedio por categoría.
     """
     query = """
-        INSERT INTO analytics.kpi_experiencia_cliente
+        INSERT INTO analytics.mart_customer_experience
         SELECT
+            CURRENT_DATE       AS metric_date,
             category,
             AVG(rating)                                                    AS avg_rating,
-            AVG(CASE WHEN is_returned = 'true' THEN 1.0 ELSE 0.0 END) * 100 AS return_rate,
+            AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100 AS return_rate,
             AVG(shipping_time_days)                                        AS avg_shipping_days
-        FROM staging.amazon_sales_clean
+        FROM analytics.fact_orders
         GROUP BY category
         ORDER BY avg_rating DESC
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_experiencia_cliente"))
+        conn.execute(text("DELETE FROM analytics.mart_customer_experience"))
         conn.execute(text(query))
-    print("kpi_experiencia_cliente calculado")
+    print("mart_customer_experience calculado")
 
 
 def build_satisfaccion_ciudad(engine):
@@ -228,20 +236,21 @@ def build_satisfaccion_ciudad(engine):
     y tasa de devolución por ciudad.
     """
     query = """
-        INSERT INTO analytics.kpi_satisfaccion_ciudad
+        INSERT INTO analytics.mart_satisfaccion_ciudad
         SELECT
+            CURRENT_DATE       AS metric_date,
             location,
             AVG(rating)                                                    AS avg_rating,
             COUNT(*)                                                       AS total_orders,
-            AVG(CASE WHEN is_returned = 'true' THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
-        FROM staging.amazon_sales_clean
+            AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
+        FROM analytics.fact_orders
         GROUP BY location
         ORDER BY avg_rating DESC
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_satisfaccion_ciudad"))
+        conn.execute(text("DELETE FROM analytics.mart_satisfaccion_ciudad"))
         conn.execute(text(query))
-    print("kpi_satisfaccion_ciudad calculado")
+    print("mart_satisfaccion_ciudad calculado")
 
 
 def build_vendedores(engine):
@@ -250,21 +259,22 @@ def build_vendedores(engine):
     rating promedio y tasa de devolución.
     """
     query = """
-        INSERT INTO analytics.kpi_vendedores
+        INSERT INTO analytics.mart_seller_performance
         SELECT
+            CURRENT_DATE       AS metric_date,
             seller_id,
             COUNT(*)                                                       AS total_orders,
-            SUM(final_price)                                               AS revenue,
-            AVG(rating)                                                    AS avg_rating,
-            AVG(CASE WHEN is_returned = 'true' THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
-        FROM staging.amazon_sales_clean
+            SUM(final_price)                                               AS total_revenue,
+            AVG(seller_rating)                                             AS avg_seller_rating,
+            AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100 AS return_rate
+        FROM analytics.fact_orders
         GROUP BY seller_id
-        ORDER BY revenue DESC
+        ORDER BY total_revenue DESC
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_vendedores"))
+        conn.execute(text("DELETE FROM analytics.mart_seller_performance"))
         conn.execute(text(query))
-    print("kpi_vendedores calculado")
+    print("mart_seller_performance calculado")
 
 
 def build_logistica_ciudad(engine):
@@ -273,20 +283,21 @@ def build_logistica_ciudad(engine):
     de devolución por ciudad.
     """
     query = """
-        INSERT INTO analytics.kpi_logistica_ciudad
+        INSERT INTO analytics.mart_logistica_ciudad
         SELECT
+            CURRENT_DATE       AS metric_date,
             location,
             AVG(shipping_time_days)                                        AS avg_shipping_days,
-            AVG(CASE WHEN is_returned = 'true' THEN 1.0 ELSE 0.0 END) * 100 AS return_rate,
+            AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100 AS return_rate,
             COUNT(*)                                                       AS total_orders
-        FROM staging.amazon_sales_clean
+        FROM analytics.fact_orders
         GROUP BY location
         ORDER BY avg_shipping_days DESC
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_logistica_ciudad"))
+        conn.execute(text("DELETE FROM analytics.mart_logistica_ciudad"))
         conn.execute(text(query))
-    print("kpi_logistica_ciudad calculado")
+    print("mart_logistica_ciudad calculado")
 
 
 def build_demoras_mensuales(engine):
@@ -295,21 +306,22 @@ def build_demoras_mensuales(engine):
     demorados como porcentaje del total.
     """
     query = """
-        INSERT INTO analytics.kpi_demoras_mensuales
+        INSERT INTO analytics.mart_demoras_mensuales
         SELECT
-            EXTRACT(YEAR FROM purchase_date)                                    AS anio,
-            EXTRACT(MONTH FROM purchase_date)                                   AS mes,
+            CURRENT_DATE                                                    AS metric_date,
+            EXTRACT(YEAR FROM purchase_date)::INTEGER                           AS anio,
+            EXTRACT(MONTH FROM purchase_date)::INTEGER                          AS mes,
             SUM(CASE WHEN delivery_status = 'Delayed' THEN 1 ELSE 0 END)       AS total_delayed,
             COUNT(*)                                                            AS total_orders,
             AVG(CASE WHEN delivery_status = 'Delayed' THEN 1.0 ELSE 0.0 END) * 100 AS pct_delayed
-        FROM staging.amazon_sales_clean
+        FROM analytics.fact_orders
         GROUP BY anio, mes
         ORDER BY anio, mes
     """
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM analytics.kpi_demoras_mensuales"))
+        conn.execute(text("DELETE FROM analytics.mart_demoras_mensuales"))
         conn.execute(text(query))
-    print("kpi_demoras_mensuales calculado")
+    print("mart_demoras_mensuales calculado")
 
 
 # ============================================================

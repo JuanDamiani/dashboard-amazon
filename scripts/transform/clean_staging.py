@@ -1,4 +1,5 @@
 import hashlib
+import json
 import pandas as pd
 from datetime import datetime
 from scripts.utils.db import engine
@@ -12,7 +13,9 @@ def leer_bronze():
     df_raw = pd.read_sql("SELECT * FROM staging.amazon_sales_raw", engine)
     registros = []
     for _, row in df_raw.iterrows():
-        payload = row["raw_payload"]  # ya viene como dict, no hay que parsear
+        payload = row["raw_payload"]
+        if isinstance(payload, str):
+            payload = json.loads(payload)
         payload["batch_id"] = row["batch_id"]
         payload["source_file"] = row["source_file"]
         registros.append(payload)
@@ -39,6 +42,13 @@ def imputar_nulos(df):
     Completa valores nulos utilizando reglas
     definidas para cada columna.
     """
+    columnas_numericas = [
+        "price", "discount", "final_price", "rating",
+        "review_count", "stock", "seller_rating", "shipping_time_days"
+    ]
+    for col in columnas_numericas:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
     df["discount"] = df["discount"].fillna(0)
     df["rating"] = df.groupby("category")["rating"].transform(
         lambda x: x.fillna(x.mean())
@@ -79,7 +89,13 @@ def convertir_tipos(df):
     df["purchase_year"] = df["purchase_date"].dt.year
     df["purchase_month"] = df["purchase_date"].dt.month
     df["purchase_day"] = df["purchase_date"].dt.day
-    df["is_returned"] = df["is_returned"].map({"True": True, "False": False})
+    df["is_returned"] = (
+        df["is_returned"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map({"true": True, "false": False})
+    )
     for col in ["price", "discount", "final_price", "rating",
                 "review_count", "stock", "seller_rating", "shipping_time_days"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")

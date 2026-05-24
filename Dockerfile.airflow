@@ -4,4 +4,9 @@ USER airflow
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+ARG AIRFLOW_VERSION=2.8.1
+ARG PYTHON_VERSION=3.8
+
+RUN pip install --no-cache-dir \
+    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt" \
+    -r requirements.txt
