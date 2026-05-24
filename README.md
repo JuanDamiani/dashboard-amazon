@@ -72,6 +72,14 @@ check_input_file_available -> check_file_not_processed -> audit_pipeline_start
 
 Cada mart/KPI tiene una tarea propia en Airflow para facilitar trazabilidad y ejecucion paralela.
 
+Para archivos grandes, el ETL evita cargar todo el dataset completo en memoria:
+
+- `validate_csv` valida por chunks.
+- `load_staging` carga por chunks en `staging.amazon_sales_input`, una staging tabular, usando `COPY` de PostgreSQL.
+- `clean_staging` deduplica y transforma hacia `analytics.fact_orders` con SQL y `ON CONFLICT DO NOTHING`.
+- `load_staging` y `clean_staging` ejecutan `ANALYZE` para actualizar estadisticas despues de cargas grandes.
+- Los marts se recalculan con SQL desde `analytics.fact_orders`.
+
 Para incorporar un nuevo dataset, copiar el archivo CSV a `data/input`. No hace falta que se llame `amazon_ecommerce.csv`; por ejemplo, `amazon_ecommerce_1M.csv` sera detectado si todavia no fue procesado.
 
 Cuando una corrida termina correctamente, el CSV se registra en `analytics.processed_files` y se mueve a `data/processed`. Si falla, se registra el fallo en `analytics.etl_audit_log`, se guarda el resumen en `analytics.validation_summary` cuando aplica, y el archivo se mueve a `data/rejected` para evitar reintentos infinitos.

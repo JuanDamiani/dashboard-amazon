@@ -106,8 +106,8 @@ def log_pipeline_success(**context):
     ti = context.get("ti")
     batch_id = _xcom(ti, "batch_id", "load_staging")
     rows_read = _xcom(ti, "rows_read", "load_staging") or _xcom(ti, "validation_rows_total", "validate_csv")
-    rows_loaded = _xcom(ti, "rows_loaded", "load_staging")
-    rows_rejected = _xcom(ti, "rows_rejected", "load_staging")
+    rows_loaded = _xcom(ti, "fact_rows_loaded", "clean_staging") or _xcom(ti, "rows_loaded", "load_staging")
+    rows_rejected = _xcom(ti, "fact_rows_rejected", "clean_staging") or _xcom(ti, "rows_rejected", "load_staging")
     log_etl_event(
         "amazon_pipeline",
         "SUCCESS",
@@ -126,8 +126,8 @@ def log_pipeline_failure(context):
     ti = context.get("ti")
     batch_id = _xcom(ti, "batch_id", "load_staging")
     rows_read = _xcom(ti, "rows_read", "load_staging") or _xcom(ti, "validation_rows_total", "validate_csv")
-    rows_loaded = _xcom(ti, "rows_loaded", "load_staging")
-    rows_rejected = _xcom(ti, "rows_rejected", "load_staging")
+    rows_loaded = _xcom(ti, "fact_rows_loaded", "clean_staging") or _xcom(ti, "rows_loaded", "load_staging")
+    rows_rejected = _xcom(ti, "fact_rows_rejected", "clean_staging") or _xcom(ti, "rows_rejected", "load_staging")
     task = context.get("task_instance")
     task_id = task.task_id if task else "unknown"
     error = context.get("exception")

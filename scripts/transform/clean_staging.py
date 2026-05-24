@@ -1,166 +1,170 @@
 """
-Limpieza y carga de la tabla de hechos.
+Transformacion SQL y carga de la tabla de hechos.
 
-Este script implementa RF12 y RF14. Lee solamente el batch actual de Bronze,
-normaliza tipos y textos, genera un sale_id estable, elimina duplicados y carga
-analytics.fact_orders sin reemplazar informacion historica. La tabla fact_orders
-es la fuente comun para todos los marts del dashboard.
+Este script implementa RF12 y RF14. Toma el batch actual desde
+staging.amazon_sales_input y deja que PostgreSQL transforme tipos, normalice
+texto, genere sale_id y cargue analytics.fact_orders con ON CONFLICT DO NOTHING.
+Asi se evita leer millones de filas en pandas dentro de Airflow.
 """
 
-import hashlib
-import json
 from datetime import datetime
 
-import pandas as pd
+from sqlalchemy import text
 
 from scripts.utils.db import engine
 
 
-def leer_bronze(batch_id=None):
-    """Reads raw JSONB rows from staging.amazon_sales_raw."""
-    if batch_id:
-        query = "SELECT * FROM staging.amazon_sales_raw WHERE batch_id = %(batch_id)s"
-        df_raw = pd.read_sql(query, engine, params={"batch_id": batch_id})
-    else:
-        df_raw = pd.read_sql("SELECT * FROM staging.amazon_sales_raw", engine)
+def transform_batch_to_fact(batch_id):
+    """Transforms the selected staging batch into analytics.fact_orders using SQL."""
+    query = text("""
+        WITH typed AS (
+            SELECT
+                md5(concat_ws('_', user_id, product_id, purchase_date)) AS sale_id,
+                batch_id,
+                source_file,
+                CASE
+                    WHEN trim(purchase_date) ~ '^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}$'
+                        THEN to_date(trim(purchase_date), 'YYYY-MM-DD')
+                    WHEN trim(purchase_date) ~ '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}$'
+                        THEN to_date(trim(purchase_date), 'DD/MM/YYYY')
+                    ELSE NULL
+                END AS purchase_date,
+                user_id,
+                product_id,
+                seller_id,
+                initcap(trim(category)) AS category,
+                initcap(trim(subcategory)) AS subcategory,
+                initcap(trim(brand)) AS brand,
+                initcap(trim(location)) AS location,
+                initcap(trim(device)) AS device,
+                initcap(trim(payment_method)) AS payment_method,
+                initcap(trim(delivery_status)) AS delivery_status,
+                price::numeric(12,2) AS price,
+                coalesce(nullif(discount, '')::numeric(5,2), 0) AS discount,
+                final_price::numeric(12,2) AS final_price,
+                rating::numeric(3,2) AS rating,
+                review_count::integer AS review_count,
+                stock::integer AS stock,
+                seller_rating::numeric(3,2) AS seller_rating,
+                shipping_time_days::integer AS shipping_time_days,
+                CASE
+                    WHEN lower(trim(is_returned)) = 'true' THEN TRUE
+                    WHEN lower(trim(is_returned)) = 'false' THEN FALSE
+                    ELSE NULL
+                END AS is_returned
+            FROM staging.amazon_sales_input
+            WHERE batch_id = :batch_id
+        ),
+        deduped AS (
+            SELECT *
+            FROM (
+                SELECT
+                    typed.*,
+                    row_number() OVER (PARTITION BY sale_id ORDER BY sale_id) AS rn
+                FROM typed
+            ) rows
+            WHERE rn = 1
+        )
+        INSERT INTO analytics.fact_orders (
+            sale_id,
+            batch_id,
+            source_file,
+            purchase_timestamp,
+            purchase_date,
+            purchase_year,
+            purchase_month,
+            purchase_day,
+            user_id,
+            product_id,
+            seller_id,
+            category,
+            subcategory,
+            brand,
+            location,
+            device,
+            payment_method,
+            delivery_status,
+            price,
+            discount,
+            final_price,
+            rating,
+            review_count,
+            seller_rating,
+            shipping_time_days,
+            stock,
+            is_returned
+        )
+        SELECT
+            sale_id,
+            batch_id,
+            source_file,
+            purchase_date::timestamp AS purchase_timestamp,
+            purchase_date,
+            extract(year from purchase_date)::integer AS purchase_year,
+            extract(month from purchase_date)::integer AS purchase_month,
+            extract(day from purchase_date)::integer AS purchase_day,
+            user_id,
+            product_id,
+            seller_id,
+            category,
+            subcategory,
+            brand,
+            location,
+            device,
+            payment_method,
+            delivery_status,
+            price,
+            discount,
+            final_price,
+            rating,
+            review_count,
+            seller_rating,
+            shipping_time_days,
+            stock,
+            is_returned
+        FROM deduped
+        ON CONFLICT (sale_id) DO NOTHING
+    """)
+    with engine.begin() as conn:
+        before = conn.execute(
+            text("SELECT COUNT(*) FROM analytics.fact_orders")
+        ).scalar()
+        staging_rows = conn.execute(
+            text("SELECT COUNT(*) FROM staging.amazon_sales_input WHERE batch_id = :batch_id"),
+            {"batch_id": batch_id},
+        ).scalar()
+        conn.execute(query, {"batch_id": batch_id})
+        conn.execute(text("ANALYZE analytics.fact_orders"))
+        after = conn.execute(
+            text("SELECT COUNT(*) FROM analytics.fact_orders")
+        ).scalar()
 
-    registros = []
-    for _, row in df_raw.iterrows():
-        payload = row["raw_payload"]
-        if isinstance(payload, str):
-            payload = json.loads(payload)
-        payload["batch_id"] = row["batch_id"]
-        payload["source_file"] = row["source_file"]
-        registros.append(payload)
-    df = pd.DataFrame(registros)
-    print(f"Filas leidas desde Bronze: {len(df):,}")
-    return df
-
-
-def generar_sale_id(df):
-    """Builds a stable order id from user, product and purchase date."""
-
-    def calcular_id(row):
-        raw = f"{row['user_id']}_{row['product_id']}_{row['purchase_date']}"
-        return hashlib.md5(raw.encode()).hexdigest()
-
-    df["sale_id"] = df.apply(calcular_id, axis=1)
-    return df
-
-
-def eliminar_duplicados_sale_id(df):
-    """Keeps only one row per sale_id before loading the fact table."""
-    filas_antes = len(df)
-    df = df.drop_duplicates(subset=["sale_id"])
-    print(f"Duplicados internos por sale_id eliminados: {filas_antes - len(df):,}")
-    return df
-
-
-def imputar_nulos(df):
-    """Fills non-critical nulls using simple business rules."""
-    columnas_numericas = [
-        "price",
-        "discount",
-        "final_price",
-        "rating",
-        "review_count",
-        "stock",
-        "seller_rating",
-        "shipping_time_days",
-    ]
-    for col in columnas_numericas:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    df["discount"] = df["discount"].fillna(0)
-    df["rating"] = df.groupby("category")["rating"].transform(lambda x: x.fillna(x.mean()))
-    df["review_count"] = df["review_count"].fillna(df["review_count"].median())
-    df["shipping_time_days"] = df.groupby("location")["shipping_time_days"].transform(
-        lambda x: x.fillna(x.mean())
-    )
-    df["seller_rating"] = df["seller_rating"].fillna(df["seller_rating"].mean())
-    print("Imputacion de nulos completada")
-    return df
-
-
-def estandarizar_texto(df):
-    """Trims text fields and applies title case."""
-    columnas_texto = [
-        "category",
-        "subcategory",
-        "brand",
-        "location",
-        "device",
-        "payment_method",
-        "delivery_status",
-    ]
-    for col in columnas_texto:
-        df[col] = df[col].str.strip()
-        df[col] = df[col].str.title()
-    print("Estandarizacion de texto completada")
-    return df
-
-
-def convertir_tipos(df):
-    """Converts fields to the expected analytics types."""
-    df["purchase_date"] = pd.to_datetime(df["purchase_date"], format="mixed")
-    df["purchase_timestamp"] = df["purchase_date"]
-    df["purchase_year"] = df["purchase_date"].dt.year
-    df["purchase_month"] = df["purchase_date"].dt.month
-    df["purchase_day"] = df["purchase_date"].dt.day
-    df["is_returned"] = (
-        df["is_returned"].astype(str).str.strip().str.lower().map({"true": True, "false": False})
-    )
-    for col in [
-        "price",
-        "discount",
-        "final_price",
-        "rating",
-        "review_count",
-        "stock",
-        "seller_rating",
-        "shipping_time_days",
-    ]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    print("Conversion de tipos completada")
-    return df
-
-
-def cargar_en_fact_orders(df):
-    """Appends only new sale_id values to analytics.fact_orders."""
-    existing_ids = pd.read_sql("SELECT sale_id FROM analytics.fact_orders", engine)
-    df = df[~df["sale_id"].isin(existing_ids["sale_id"])]
-    if df.empty:
-        print("No hay filas nuevas para cargar en analytics.fact_orders")
-        return
-
-    df.to_sql("fact_orders", engine, schema="analytics", if_exists="append", index=False)
-    print(f"Carga completada: {len(df):,} filas nuevas en analytics.fact_orders")
+    inserted = int(after - before)
+    print(f"Filas staging del batch: {staging_rows:,}")
+    print(f"Filas nuevas cargadas en fact_orders: {inserted:,}")
+    return int(staging_rows), inserted
 
 
 def clean_staging(**context):
-    """Cleans Bronze data and loads analytics.fact_orders."""
+    """Transforms staging rows and loads analytics.fact_orders."""
     print("=" * 50)
-    print("Inicio limpieza y carga fact_orders")
+    print("Inicio transformacion SQL y carga fact_orders")
     print(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 50)
 
     ti = context.get("ti")
     batch_id = ti.xcom_pull(key="batch_id", task_ids="load_staging") if ti else None
+    if not batch_id:
+        raise ValueError("No se encontro batch_id de load_staging")
 
-    df = leer_bronze(batch_id=batch_id)
-    if df.empty:
-        print("No hay filas en Bronze para limpiar")
-        return
-
-    df = generar_sale_id(df)
-    df = eliminar_duplicados_sale_id(df)
-    df = imputar_nulos(df)
-    df = estandarizar_texto(df)
-    df = convertir_tipos(df)
-    cargar_en_fact_orders(df)
+    staging_rows, inserted = transform_batch_to_fact(batch_id)
+    if ti:
+        ti.xcom_push(key="fact_rows_seen", value=staging_rows)
+        ti.xcom_push(key="fact_rows_loaded", value=inserted)
+        ti.xcom_push(key="fact_rows_rejected", value=staging_rows - inserted)
 
     print("=" * 50)
-    print("Limpieza y carga finalizada")
+    print("Transformacion y carga finalizada")
     print("=" * 50)
 
 

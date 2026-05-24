@@ -1,26 +1,49 @@
 """
-Carga Bronze del pipeline.
+Carga Bronze tabular del pipeline.
 
-Este script implementa parte de RF10, RF12 y RF14. Toma el CSV validado,
-elimina duplicados basicos, descarta nulos criticos y guarda cada fila original
-como JSONB en staging.amazon_sales_raw. La carga se hace por chunks para poder
-procesar archivos grandes sin agotar memoria en Airflow.
+Este script implementa RF10, RF12 y RF14. Lee el CSV por chunks y guarda datos
+en staging.amazon_sales_input con columnas reales. Esta estrategia evita JSONB
+masivo en Python y permite que PostgreSQL haga las transformaciones pesadas.
 """
 
 import os
 import uuid
+from io import StringIO
 from datetime import datetime
 
-import pandas as pd
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import text
 
-from scripts.config import COLUMNAS_CRITICAS, COLUMNAS_REQUERIDAS
+from scripts.config import COLUMNAS_REQUERIDAS
 from scripts.utils.csv_reader import read_csv_auto
 from scripts.utils.db import engine
 from scripts.utils.input_file import get_selected_csv_path
 
 
 LOAD_CHUNK_SIZE = int(os.getenv("LOAD_CHUNK_SIZE", "50000"))
+
+
+def ensure_tabular_staging_table():
+    """Creates the tabular staging table when running on an existing database."""
+    columns_sql = ",\n".join(f"{column} TEXT" for column in COLUMNAS_REQUERIDAS)
+    query = text(f"""
+        CREATE TABLE IF NOT EXISTS staging.amazon_sales_input (
+            staging_id BIGSERIAL PRIMARY KEY,
+            source_file VARCHAR(255) NOT NULL,
+            batch_id VARCHAR(100) NOT NULL,
+            loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            {columns_sql}
+        )
+    """)
+    with engine.begin() as conn:
+        conn.execute(query)
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_input_batch
+            ON staging.amazon_sales_input(batch_id)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_input_file
+            ON staging.amazon_sales_input(source_file)
+        """))
 
 
 def leer_csv(file_path):
@@ -32,7 +55,7 @@ def leer_csv(file_path):
 
 def iterar_csv(file_path, chunksize=LOAD_CHUNK_SIZE):
     """Reads the selected CSV in chunks to avoid loading huge files in memory."""
-    return read_csv_auto(file_path, chunksize=chunksize)
+    return read_csv_auto(file_path, dtype=str, chunksize=chunksize)
 
 
 def verificar_columnas_para_carga(df):
@@ -42,68 +65,58 @@ def verificar_columnas_para_carga(df):
         raise ValueError(f"Columnas faltantes antes de cargar Bronze: {faltantes}")
 
 
-def eliminar_duplicados(df, seen_keys=None):
-    """Drops duplicated rows using the business key available in the CSV."""
-    filas_antes = len(df)
-    key_cols = ["user_id", "product_id", "purchase_date"]
-
-    if seen_keys is None:
-        df = df.drop_duplicates(subset=key_cols)
-    else:
-        local_keys = df[key_cols].astype(str).agg("|".join, axis=1)
-        mask = ~local_keys.isin(seen_keys)
-        df = df.loc[mask].copy()
-        seen_keys.update(local_keys[mask].tolist())
-        df = df.drop_duplicates(subset=key_cols)
-
-    print(f"Duplicados eliminados: {filas_antes - len(df):,}")
+def preparar_staging_tabular(df, file_name, batch_id):
+    """Adds metadata columns before loading into staging.amazon_sales_input."""
+    df = df[COLUMNAS_REQUERIDAS].copy()
+    df.insert(0, "batch_id", batch_id)
+    df.insert(0, "source_file", str(file_name))
     return df
 
 
-def eliminar_nulos_criticos(df):
-    """Drops rows with null values in critical columns."""
-    filas_antes = len(df)
-    df = df.dropna(subset=COLUMNAS_CRITICAS)
-    print(f"Filas eliminadas por nulos criticos: {filas_antes - len(df):,}")
-    return df
+def _copy_dataframe_to_staging(df):
+    """Loads a dataframe into PostgreSQL using COPY for better throughput."""
+    columns = ["source_file", "batch_id"] + COLUMNAS_REQUERIDAS
+    buffer = StringIO()
+    df.to_csv(buffer, index=False, header=False, na_rep="\\N")
+    buffer.seek(0)
 
-
-def convertir_a_jsonb(df, file_name, batch_id):
-    """Converts CSV rows to JSONB payloads for the raw staging table."""
-    raw_rows = [
-        {
-            "source_file": str(file_name),
-            "batch_id": batch_id,
-            "raw_payload": row,
-        }
-        for row in df.to_dict(orient="records")
-    ]
-    return pd.DataFrame(raw_rows)
+    copy_sql = f"""
+        COPY staging.amazon_sales_input ({", ".join(columns)})
+        FROM STDIN WITH (FORMAT CSV, NULL '\\N')
+    """
+    raw_connection = engine.raw_connection()
+    try:
+        with raw_connection.cursor() as cursor:
+            cursor.copy_expert(copy_sql, buffer)
+        raw_connection.commit()
+    except Exception:
+        raw_connection.rollback()
+        raise
+    finally:
+        raw_connection.close()
 
 
 def cargar_en_postgresql(df):
-    """Appends raw rows to staging.amazon_sales_raw."""
+    """Appends tabular rows to staging.amazon_sales_input."""
     if df.empty:
         return 0
 
-    df.to_sql(
-        "amazon_sales_raw",
-        engine,
-        schema="staging",
-        if_exists="append",
-        index=False,
-        dtype={"raw_payload": JSONB()},
-        method="multi",
-        chunksize=5000,
-    )
-    print(f"Carga completada: {len(df):,} filas en staging.amazon_sales_raw")
+    _copy_dataframe_to_staging(df)
+    print(f"Carga completada: {len(df):,} filas en staging.amazon_sales_input")
     return len(df)
 
 
+def analyze_staging_table():
+    """Updates PostgreSQL statistics after a large staging load."""
+    with engine.begin() as conn:
+        conn.execute(text("ANALYZE staging.amazon_sales_input"))
+    print("ANALYZE ejecutado sobre staging.amazon_sales_input")
+
+
 def load_staging(**context):
-    """Loads raw CSV data into the Bronze staging layer."""
+    """Loads CSV data into the tabular Bronze staging layer."""
     print("=" * 50)
-    print("Inicio carga Bronze")
+    print("Inicio carga Bronze tabular")
     print(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 50)
 
@@ -118,7 +131,7 @@ def load_staging(**context):
 
     total_leidas = 0
     total_cargadas = 0
-    seen_keys = set()
+    ensure_tabular_staging_table()
 
     for chunk_number, chunk in enumerate(iterar_csv(file_path), start=1):
         if chunk_number == 1:
@@ -127,10 +140,9 @@ def load_staging(**context):
         total_leidas += len(chunk)
         print(f"Procesando chunk {chunk_number}: {len(chunk):,} filas")
 
-        chunk = eliminar_duplicados(chunk, seen_keys=seen_keys)
-        chunk = eliminar_nulos_criticos(chunk)
-        raw_chunk = convertir_a_jsonb(chunk, file_name, batch_id)
-        total_cargadas += cargar_en_postgresql(raw_chunk)
+        staging_chunk = preparar_staging_tabular(chunk, file_name, batch_id)
+        total_cargadas += cargar_en_postgresql(staging_chunk)
+
         if ti:
             ti.xcom_push(key="rows_read", value=total_leidas)
             ti.xcom_push(key="rows_loaded", value=total_cargadas)
@@ -138,6 +150,7 @@ def load_staging(**context):
 
     print(f"Filas leidas totales: {total_leidas:,}")
     print(f"Filas cargadas totales: {total_cargadas:,}")
+    analyze_staging_table()
 
     if ti:
         ti.xcom_push(key="batch_id", value=batch_id)
@@ -147,7 +160,7 @@ def load_staging(**context):
         ti.xcom_push(key="rows_rejected", value=total_leidas - total_cargadas)
 
     print("=" * 50)
-    print("Carga Bronze finalizada")
+    print("Carga Bronze tabular finalizada")
     print("=" * 50)
     return batch_id
 

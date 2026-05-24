@@ -2,8 +2,8 @@
 Pruebas minimas del pipeline.
 
 Estas pruebas documentan parte de la cobertura de RF11 y RF14: validan que un
-CSV correcto pase, que falten columnas obligatorias falle y que las claves
-sale_id se mantengan estables y se dedupliquen antes de cargar la fact table.
+CSV correcto pase, que falten columnas obligatorias falle y que la carga tabular
+prepare metadata antes de cargar staging. La deduplicacion queda en SQL.
 """
 
 import tempfile
@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from scripts.transform.clean_staging import eliminar_duplicados_sale_id, generar_sale_id
-from scripts.load.load_staging import convertir_a_jsonb, eliminar_duplicados
+from scripts.config import COLUMNAS_REQUERIDAS
+from scripts.load.load_staging import preparar_staging_tabular
 from scripts.validation import validate_csv as validation
 
 
@@ -108,38 +108,15 @@ class CsvValidationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validation.validate_csv()
 
-    def test_sale_id_is_stable_for_same_business_key(self):
-        df = pd.DataFrame([VALID_ROW, {**VALID_ROW, "rating": "3.0"}])
-        result = generar_sale_id(df)
-
-        self.assertEqual(result["sale_id"].iloc[0], result["sale_id"].iloc[1])
-
-    def test_sale_id_duplicates_are_removed_before_load(self):
-        df = pd.DataFrame([VALID_ROW, {**VALID_ROW, "rating": "3.0"}])
-        df = generar_sale_id(df)
-        result = eliminar_duplicados_sale_id(df)
-
-        self.assertEqual(len(result), 1)
-
-    def test_convert_to_jsonb_keeps_payload_and_metadata(self):
+    def test_prepare_tabular_staging_keeps_payload_and_metadata(self):
         df = pd.DataFrame([VALID_ROW])
-        result = convertir_a_jsonb(df, "amazon.csv", "batch-1")
+        result = preparar_staging_tabular(df, "amazon.csv", "batch-1")
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result["source_file"].iloc[0], "amazon.csv")
         self.assertEqual(result["batch_id"].iloc[0], "batch-1")
-        self.assertEqual(result["raw_payload"].iloc[0]["user_id"], "U1")
-
-    def test_load_dedup_uses_seen_keys_across_chunks(self):
-        seen_keys = set()
-        first = pd.DataFrame([VALID_ROW])
-        second = pd.DataFrame([{**VALID_ROW, "rating": "3.0"}])
-
-        first_result = eliminar_duplicados(first, seen_keys=seen_keys)
-        second_result = eliminar_duplicados(second, seen_keys=seen_keys)
-
-        self.assertEqual(len(first_result), 1)
-        self.assertEqual(len(second_result), 0)
+        self.assertEqual(result["user_id"].iloc[0], "U1")
+        self.assertEqual(list(result.columns), ["source_file", "batch_id"] + COLUMNAS_REQUERIDAS)
 
 
 if __name__ == "__main__":

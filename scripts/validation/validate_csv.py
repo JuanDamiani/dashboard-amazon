@@ -1,14 +1,14 @@
 """
 Validacion del archivo CSV de entrada.
 
-Este script implementa RF11 del SRS: antes de iniciar el procesamiento, revisa
-que el archivo tenga las columnas requeridas, tipos numericos validos, fechas
-parseables, valores permitidos y rangos razonables. Si encuentra errores
-criticos, falla la tarea de Airflow para que no se carguen datos invalidos.
+Este script implementa RF11 del SRS. Para soportar archivos grandes, valida por
+chunks: revisa columnas, nulos criticos, numericos, fechas, valores permitidos y
+rangos sin cargar todo el CSV completo en memoria.
 """
 
-import pandas as pd
 from datetime import datetime
+
+import pandas as pd
 
 from scripts.config import (
     COLUMNAS_CRITICAS,
@@ -17,85 +17,73 @@ from scripts.config import (
     VALORES_ADVERTENCIA,
     VALORES_ESTRICTOS,
 )
+from scripts.load.load_staging import LOAD_CHUNK_SIZE
 from scripts.utils.csv_reader import read_csv_auto
 from scripts.utils.input_file import get_selected_csv_path
 from scripts.utils.validation_summary import record_validation_summary
 
 
-def verificar_archivo(file_path):
-    """Checks that the selected CSV exists and loads it as strings."""
-    if not file_path.exists():
-        raise FileNotFoundError(f"Archivo no encontrado: {file_path}")
-    df = read_csv_auto(file_path, dtype=str)
-    print(f"Archivo leido: {file_path.name} ({len(df):,} filas)")
-    return df
+MAX_DETALLES = 10
 
 
-def verificar_columnas(df, errores):
+def _agregar_error(contadores, clave, cantidad, detalle=None):
+    if cantidad <= 0:
+        return
+    item = contadores.setdefault(clave, {"cantidad": 0, "detalles": set()})
+    item["cantidad"] += int(cantidad)
+    if detalle is not None and len(item["detalles"]) < MAX_DETALLES:
+        if isinstance(detalle, list):
+            item["detalles"].update(str(valor) for valor in detalle[:MAX_DETALLES])
+        else:
+            item["detalles"].add(str(detalle))
+
+
+def _formatear_resultados(contadores):
+    resultados = []
+    for clave, data in contadores.items():
+        detalles = sorted(data["detalles"])
+        detalle_txt = f" Detalles: {detalles}" if detalles else ""
+        resultados.append(f"{clave}: {data['cantidad']} ocurrencia(s).{detalle_txt}")
+    return resultados
+
+
+def _validar_columnas(df):
     faltantes = [col for col in COLUMNAS_REQUERIDAS if col not in df.columns]
     if faltantes:
-        errores.append(f"Columnas faltantes: {faltantes}")
-    return errores
+        return [f"Columnas faltantes: {faltantes}"]
+    return []
 
 
-def verificar_nulos(df, errores):
+def _validar_chunk(df, errores, advertencias):
     for col in COLUMNAS_CRITICAS:
         nulos = df[col].isna().sum()
-        if nulos > 0:
-            errores.append(f"'{col}': {nulos} valores nulos")
-    return errores
+        _agregar_error(errores, f"'{col}' valores nulos", nulos)
 
-
-def verificar_numericos(df, errores):
     for col in COLUMNAS_NUMERICAS:
-        no_numericos = pd.to_numeric(df[col], errors="coerce").isna().sum()
-        if no_numericos > 0:
-            errores.append(f"'{col}': {no_numericos} valores no numericos")
-    return errores
+        valores = df[col]
+        no_numericos = pd.to_numeric(valores, errors="coerce").isna().sum()
+        _agregar_error(errores, f"'{col}' valores no numericos", no_numericos)
 
+    fechas_invalidas = pd.to_datetime(df["purchase_date"], format="mixed", errors="coerce").isna().sum()
+    _agregar_error(errores, "'purchase_date' fechas con formato invalido", fechas_invalidas)
 
-def verificar_fechas(df, errores):
-    fechas_invalidas = pd.to_datetime(
-        df["purchase_date"], format="mixed", errors="coerce"
-    ).isna().sum()
-    if fechas_invalidas > 0:
-        errores.append(f"'purchase_date': {fechas_invalidas} fechas con formato invalido")
-    return errores
-
-
-def verificar_valores_estrictos(df, errores):
     for col, valores_validos in VALORES_ESTRICTOS.items():
         invalidos = df[~df[col].isin(valores_validos)][col].dropna().unique().tolist()
-        if invalidos:
-            errores.append(f"'{col}': valores invalidos: {invalidos}")
-    return errores
+        _agregar_error(errores, f"'{col}' valores invalidos", len(invalidos), invalidos)
 
-
-def verificar_valores_advertencia(df, advertencias):
-    for col, valores_conocidos in VALORES_ADVERTENCIA.items():
-        nuevos = df[~df[col].isin(valores_conocidos)][col].dropna().unique().tolist()
-        if nuevos:
-            advertencias.append(f"'{col}': valores nuevos detectados: {nuevos}")
-    return advertencias
-
-
-def verificar_rangos(df, errores):
     rangos = {
         "discount": (0, 100),
         "rating": (0, 5),
     }
     for col, (minimo, maximo) in rangos.items():
         valores = pd.to_numeric(df[col], errors="coerce")
-        fuera_min = (valores < minimo).sum()
-        fuera_max = (valores > maximo).sum()
-        if fuera_min > 0:
-            errores.append(f"'{col}': {fuera_min} valores menores a {minimo}")
-        if fuera_max > 0:
-            errores.append(f"'{col}': {fuera_max} valores mayores a {maximo}")
-    return errores
+        _agregar_error(errores, f"'{col}' valores menores a {minimo}", (valores < minimo).sum())
+        _agregar_error(errores, f"'{col}' valores mayores a {maximo}", (valores > maximo).sum())
 
+    for col, valores_conocidos in VALORES_ADVERTENCIA.items():
+        nuevos = df[~df[col].isin(valores_conocidos)][col].dropna().unique().tolist()
+        _agregar_error(advertencias, f"'{col}' valores nuevos detectados", len(nuevos), nuevos)
 
-def verificar_rangos_sospechosos(df, advertencias):
     rangos_sospechosos = {
         "shipping_time_days": 30,
         "stock": 10000,
@@ -103,9 +91,7 @@ def verificar_rangos_sospechosos(df, advertencias):
     }
     for col, limite in rangos_sospechosos.items():
         sospechosos = (pd.to_numeric(df[col], errors="coerce") > limite).sum()
-        if sospechosos > 0:
-            advertencias.append(f"'{col}': {sospechosos} valores mayores a {limite}")
-    return advertencias
+        _agregar_error(advertencias, f"'{col}' valores mayores a {limite}", sospechosos)
 
 
 def _mostrar_resultado(errores, advertencias, total_filas):
@@ -139,41 +125,45 @@ def _mostrar_resultado(errores, advertencias, total_filas):
 
 def validate_csv(**context):
     """Runs all CSV checks and fails the Airflow task on critical errors."""
-    errores = []
-    advertencias = []
-
     file_path = get_selected_csv_path(context)
-    df = verificar_archivo(file_path)
-    total_filas = len(df)
+    if not file_path.exists():
+        raise FileNotFoundError(f"Archivo no encontrado: {file_path}")
 
-    errores = verificar_columnas(df, errores)
-    if errores:
-        _mostrar_resultado(errores, advertencias, total_filas)
-        record_validation_summary(file_path, total_filas, errores, advertencias)
-        if context.get("ti"):
-            context["ti"].xcom_push(key="validation_rows_total", value=int(total_filas))
-            context["ti"].xcom_push(key="validation_error_count", value=len(errores))
-            context["ti"].xcom_push(key="validation_warning_count", value=len(advertencias))
-        raise ValueError("Validacion fallida: columnas faltantes")
+    errores = {}
+    advertencias = {}
+    total_filas = 0
 
-    errores = verificar_nulos(df, errores)
-    errores = verificar_numericos(df, errores)
-    errores = verificar_fechas(df, errores)
-    errores = verificar_valores_estrictos(df, errores)
-    errores = verificar_rangos(df, errores)
-    advertencias = verificar_valores_advertencia(df, advertencias)
-    advertencias = verificar_rangos_sospechosos(df, advertencias)
+    reader = read_csv_auto(file_path, dtype=str, chunksize=LOAD_CHUNK_SIZE)
+    try:
+        for chunk_number, chunk in enumerate(reader, start=1):
+            if chunk_number == 1:
+                errores_columnas = _validar_columnas(chunk)
+                if errores_columnas:
+                    _mostrar_resultado(errores_columnas, [], len(chunk))
+                    record_validation_summary(file_path, len(chunk), errores_columnas, [])
+                    raise ValueError("Validacion fallida: columnas faltantes")
 
-    _mostrar_resultado(errores, advertencias, total_filas)
-    record_validation_summary(file_path, total_filas, errores, advertencias)
+            total_filas += len(chunk)
+            print(f"Validando chunk {chunk_number}: {len(chunk):,} filas")
+            _validar_chunk(chunk, errores, advertencias)
+    finally:
+        close = getattr(reader, "close", None)
+        if close:
+            close()
 
-    if errores:
-        raise ValueError(f"Validacion fallida: {len(errores)} error(es) encontrado(s)")
+    errores_list = _formatear_resultados(errores)
+    advertencias_list = _formatear_resultados(advertencias)
+    _mostrar_resultado(errores_list, advertencias_list, total_filas)
+    record_validation_summary(file_path, total_filas, errores_list, advertencias_list)
 
-    if context.get("ti"):
-        context["ti"].xcom_push(key="validation_rows_total", value=int(total_filas))
-        context["ti"].xcom_push(key="validation_error_count", value=len(errores))
-        context["ti"].xcom_push(key="validation_warning_count", value=len(advertencias))
+    ti = context.get("ti")
+    if ti:
+        ti.xcom_push(key="validation_rows_total", value=int(total_filas))
+        ti.xcom_push(key="validation_error_count", value=len(errores_list))
+        ti.xcom_push(key="validation_warning_count", value=len(advertencias_list))
+
+    if errores_list:
+        raise ValueError(f"Validacion fallida: {len(errores_list)} error(es) encontrado(s)")
 
     print("Validacion exitosa")
 

@@ -61,6 +61,71 @@ CREATE INDEX IF NOT EXISTS idx_raw_loaded_at
 ON staging.amazon_sales_raw(loaded_at);
 
 -- =========================================================
+-- TABULAR STAGING
+-- =========================================================
+-- Tabla staging principal para archivos grandes.
+-- A diferencia de amazon_sales_raw, evita JSONB masivo y permite transformar
+-- hacia fact_orders con SQL dentro de PostgreSQL.
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS staging.amazon_sales_input (
+
+    staging_id BIGSERIAL PRIMARY KEY,
+
+    source_file VARCHAR(255) NOT NULL,
+
+    batch_id VARCHAR(100) NOT NULL,
+
+    loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    user_id TEXT,
+
+    product_id TEXT,
+
+    category TEXT,
+
+    subcategory TEXT,
+
+    brand TEXT,
+
+    price TEXT,
+
+    discount TEXT,
+
+    final_price TEXT,
+
+    rating TEXT,
+
+    review_count TEXT,
+
+    stock TEXT,
+
+    seller_id TEXT,
+
+    seller_rating TEXT,
+
+    purchase_date TEXT,
+
+    shipping_time_days TEXT,
+
+    location TEXT,
+
+    device TEXT,
+
+    payment_method TEXT,
+
+    is_returned TEXT,
+
+    delivery_status TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_input_batch
+ON staging.amazon_sales_input(batch_id);
+
+CREATE INDEX IF NOT EXISTS idx_input_file
+ON staging.amazon_sales_input(source_file);
+
+-- =========================================================
 -- PROCESSED FILES
 -- =========================================================
 -- Evita reprocesamiento de archivos CSV.
