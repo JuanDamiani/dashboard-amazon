@@ -62,6 +62,17 @@ KPI_TASKS = {
     "build_period_variation": build_period_variation,
 }
 
+# En instalaciones locales con LocalExecutor, disparar todos los KPIs a la vez
+# puede saturar el heartbeat de Airflow contra su base de metadata. Se mantienen
+# tareas separadas y paralelismo, pero en tandas chicas para que el DAG sea
+# estable incluso con CSVs grandes y contenedores recien levantados.
+KPI_PARALLEL_BATCH_SIZE = 4
+
+
+def chunk_tasks(tasks, chunk_size):
+    """Divide una lista de tareas en tandas de ejecucion paralela."""
+    return [tasks[index:index + chunk_size] for index in range(0, len(tasks), chunk_size)]
+
 
 with DAG(
     dag_id="amazon_pipeline",
@@ -111,6 +122,7 @@ with DAG(
         )
         for task_id, callable_ in KPI_TASKS.items()
     ]
+    kpi_batches = chunk_tasks(kpi_tasks, KPI_PARALLEL_BATCH_SIZE)
 
     quality_task = PythonOperator(
         task_id="run_quality_checks",
@@ -145,7 +157,15 @@ with DAG(
         >> validate_task
         >> load_task
         >> clean_task
-        >> kpi_tasks
+        >> kpi_batches[0]
+    )
+
+    for current_batch, next_batch in zip(kpi_batches, kpi_batches[1:]):
+        for upstream_task in current_batch:
+            upstream_task >> next_batch
+
+    (
+        kpi_batches[-1]
         >> quality_task
         >> register_file_task
         >> audit_success_task
