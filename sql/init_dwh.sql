@@ -606,6 +606,146 @@ CREATE TABLE IF NOT EXISTS analytics.validation_summary (
 CREATE INDEX IF NOT EXISTS idx_validation_summary_file
 ON analytics.validation_summary(file_name);
 
+
+
+-- =========================================================
+-- MART: DELIVERY PERFORMANCE (RF4)
+-- % entregas a tiempo, % demorados, % en transito
+-- =========================================================
+ 
+CREATE TABLE IF NOT EXISTS analytics.mart_delivery_performance (
+ 
+    metric_date         DATE,
+ 
+    total_orders        INTEGER,
+ 
+    delivered_orders    INTEGER,
+ 
+    delayed_orders      INTEGER,
+ 
+    in_transit_orders   INTEGER,
+ 
+    returned_orders     INTEGER,
+ 
+    pct_on_time         NUMERIC(6,2),
+ 
+    pct_delayed         NUMERIC(6,2),
+ 
+    pct_in_transit      NUMERIC(6,2),
+ 
+    pct_returned        NUMERIC(6,2)
+);
+ 
+-- =========================================================
+-- MART: PAYMENT VS RETURNS (RF4, RF5)
+-- Relacion entre metodo de pago y tasa de devolucion
+-- =========================================================
+ 
+CREATE TABLE IF NOT EXISTS analytics.mart_payment_vs_returns (
+ 
+    metric_date      DATE,
+ 
+    payment_method   VARCHAR(50),
+ 
+    total_orders     INTEGER,
+ 
+    returned_orders  INTEGER,
+ 
+    return_rate      NUMERIC(6,2)
+);
+ 
+-- =========================================================
+-- MART: DELAYS VS RETURNS (RF4)
+-- Relacion entre dias de envio y tasa de devolucion
+-- =========================================================
+ 
+CREATE TABLE IF NOT EXISTS analytics.mart_delays_vs_returns (
+ 
+    metric_date         DATE,
+ 
+    shipping_time_days  INTEGER,
+ 
+    total_orders        INTEGER,
+ 
+    returned_orders     INTEGER,
+ 
+    return_rate         NUMERIC(6,2)
+);
+ 
+-- =========================================================
+-- MART: RATING DISTRIBUTION (RF5)
+-- Distribucion de ordenes por calificacion exacta
+-- =========================================================
+ 
+CREATE TABLE IF NOT EXISTS analytics.mart_rating_distribution (
+ 
+    metric_date     DATE,
+ 
+    rating          NUMERIC(3,2),
+ 
+    total_orders    INTEGER,
+ 
+    order_share_pct NUMERIC(6,2)
+);
+ 
+-- =========================================================
+-- MART: RATING BY RANGE (RF5)
+-- Distribucion de ordenes por rango de calificacion
+-- =========================================================
+ 
+CREATE TABLE IF NOT EXISTS analytics.mart_rating_by_range (
+ 
+    metric_date     DATE,
+ 
+    rating_range    VARCHAR(20),
+ 
+    total_orders    INTEGER,
+ 
+    order_share_pct NUMERIC(6,2),
+ 
+    avg_rating      NUMERIC(4,2),
+ 
+    return_rate     NUMERIC(6,2)
+);
+ 
+-- =========================================================
+-- MART: CATEGORIES BY SELLER (RF6)
+-- Categorias comercializadas por vendedor
+-- =========================================================
+ 
+CREATE TABLE IF NOT EXISTS analytics.mart_categories_by_seller (
+ 
+    metric_date    DATE,
+ 
+    seller_id      VARCHAR(50),
+ 
+    category       VARCHAR(100),
+ 
+    total_orders   INTEGER,
+ 
+    total_revenue  NUMERIC(14,2),
+ 
+    return_rate    NUMERIC(6,2)
+);
+ 
+-- =========================================================
+-- MART: DISCOUNT VS ORDERS (RF3)
+-- Relacion entre nivel de descuento y volumen de ordenes
+-- =========================================================
+ 
+CREATE TABLE IF NOT EXISTS analytics.mart_discount_vs_orders (
+ 
+    metric_date     DATE,
+ 
+    discount_range  VARCHAR(20),
+ 
+    total_orders    INTEGER,
+ 
+    total_revenue   NUMERIC(14,2),
+ 
+    avg_ticket      NUMERIC(14,2)
+);
+
 -- =========================================================
 -- FUTURAS EXTENSIONES
 -- =========================================================
