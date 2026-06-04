@@ -13,3 +13,9 @@ pyarrow
 openpyxl
 
 scikit-learn
+
+streamlit==1.32.0
+plotly==5.19.0
+pandas==2.0.3
+sqlalchemy==1.4.51
+psycopg2-binary==2.9.9
