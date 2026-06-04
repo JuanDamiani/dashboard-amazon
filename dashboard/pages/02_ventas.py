@@ -43,26 +43,23 @@ with header_col:
 
 with tabs_col:
     tab_names = ["Overview", "Ventas", "Logística", "Clientes", "Vendedores", "Glosario"]
-    pages = {
-        "Overview":   "app.py",
-        "Ventas":     "pages/02_ventas.py",
-        "Logística":  "pages/03_logistica.py",
-        "Clientes":   "pages/04_clientes.py",
-        "Vendedores": "pages/05_vendedores.py",
-        "Glosario":   "pages/06_glosario.py",
-    }
-    for name, page in pages.items():
-        is_active = name == "Ventas"
-        color = PALETTE["accent"] if is_active else PALETTE["text_light"]
-        border = f"border-bottom: 3px solid {PALETTE['accent']};" if is_active else "border-bottom: 3px solid transparent;"
-        st.markdown(f"""
-        <a href="/{page.replace('pages/', '').replace('.py', '').replace('app', '')}"
-           style="padding: 10px 20px; font-size: 0.88rem; font-weight: {'700' if is_active else '500'};
-                  color: {color}; text-decoration: none; display: inline-block;
-                  {border} margin-bottom: -2px;">
-           {name}
-        </a>
-        """, unsafe_allow_html=True)
+    selected_tab = st.radio(
+        "nav", tab_names,
+        horizontal=True,
+        label_visibility="collapsed",
+        index=1,
+        key="main_nav",
+    )
+    if selected_tab == "Overview":
+        st.switch_page("app.py")
+    elif selected_tab == "Logística":
+        st.switch_page("pages/03_logistica.py")
+    elif selected_tab == "Clientes":
+        st.switch_page("pages/04_clientes.py")
+    elif selected_tab == "Vendedores":
+        st.switch_page("pages/05_vendedores.py")
+    elif selected_tab == "Glosario":
+        st.switch_page("pages/06_glosario.py")
 
 st.markdown('<hr style="margin: 0 0 8px 0; border-color: #E4E9F0;">', unsafe_allow_html=True)
 
@@ -172,14 +169,19 @@ with tab1:
     """)
     col1, col2 = st.columns(2)
     with col1:
+        def fmt_ingresos(v):
+            if v >= 1_000_000_000: return f"₹{v/1_000_000_000:.1f}B"
+            if v >= 1_000_000:     return f"₹{v/1_000_000:.1f}M"
+            return f"₹{v:,.0f}"
+        df_cat["ingresos_label"] = df_cat["ingresos"].apply(fmt_ingresos)
         fig_c = px.bar(df_cat, x="category", y="ingresos",
                        color_discrete_sequence=[PALETTE["primary_light"]],
-                       text="ingresos",
+                       text="ingresos_label",
                        title="Ingresos por Categoría",
                        labels={"ingresos": "Ingresos (INR)", "category": ""})
-        fig_c.update_traces(texttemplate="₹%{text:,.0f}", textposition="outside")
+        fig_c.update_traces(textposition="outside")
         fig_c.update_layout(
-            plot_bgcolor="white", paper_bgcolor="white", height=300,
+            plot_bgcolor="white", paper_bgcolor="white", height=320,
             font=dict(family=FONT, color=PALETTE["text"]),
             title=dict(font=dict(color="#6B7A8D", size=13)),
             margin=dict(t=40, b=20, l=10, r=10),
@@ -192,19 +194,55 @@ with tab1:
                        text="descuento_prom",
                        title="Descuento Promedio por Categoría (%)",
                        labels={"descuento_prom": "Descuento (%)", "category": ""})
-        fig_d.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig_d.update_traces(texttemplate="%{text:.0f}%", textposition="outside")
         fig_d.update_layout(
-            plot_bgcolor="white", paper_bgcolor="white", height=300,
+            plot_bgcolor="white", paper_bgcolor="white", height=320,
             font=dict(family=FONT, color=PALETTE["text"]),
             title=dict(font=dict(color="#6B7A8D", size=13)),
             margin=dict(t=40, b=20, l=10, r=10),
         )
         fig_d.update_yaxes(gridcolor="#EEF2F7")
         st.plotly_chart(fig_d, use_container_width=True)
-    st.dataframe(df_cat.style.format({
-        "ingresos": "₹{:,.0f}", "precio_promedio": "₹{:,.0f}",
-        "descuento_prom": "{:.1f}%", "tasa_dev": "{:.1f}%",
-    }), use_container_width=True)
+
+    # Precio original vs precio final
+    st.markdown("<br>", unsafe_allow_html=True)
+    df_precios = query(f"""
+        SELECT category,
+               ROUND(AVG(price)::numeric, 0) AS precio_original,
+               ROUND(AVG(final_price)::numeric, 0) AS precio_final,
+               ROUND(AVG(discount)::numeric, 0) AS descuento_prom
+        FROM analytics.fact_orders {where_ventas}
+        GROUP BY category ORDER BY precio_original DESC
+    """)
+    fig_precios = go.Figure()
+    fig_precios.add_trace(go.Bar(
+        name="Precio original",
+        x=df_precios["category"],
+        y=df_precios["precio_original"],
+        marker_color=PALETTE["primary"],
+        text=df_precios["precio_original"].apply(lambda v: f"₹{v:,.0f}"),
+        textposition="outside",
+    ))
+    fig_precios.add_trace(go.Bar(
+        name="Precio final",
+        x=df_precios["category"],
+        y=df_precios["precio_final"],
+        marker_color=PALETTE["accent"],
+        text=df_precios["precio_final"].apply(lambda v: f"₹{v:,.0f}"),
+        textposition="outside",
+    ))
+    fig_precios.update_layout(
+        title=dict(text="Precio Original vs Precio Final por Categoría", font=dict(color="#6B7A8D", size=13)),
+        barmode="group",
+        plot_bgcolor="white", paper_bgcolor="white", height=340,
+        font=dict(family=FONT, color=PALETTE["text"]),
+        margin=dict(t=50, b=40, l=10, r=10),
+        legend=dict(orientation="h", y=1.08),
+        hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=12)),
+    )
+    fig_precios.update_yaxes(gridcolor="#EEF2F7", title="Precio promedio (INR)")
+    fig_precios.update_xaxes(title="Categoría")
+    st.plotly_chart(fig_precios, use_container_width=True)
 
 with tab2:
     df_sub = query(f"""
@@ -212,23 +250,58 @@ with tab2:
                COUNT(*) AS unidades_vendidas,
                ROUND(SUM(final_price)::numeric, 0) AS ingresos,
                ROUND(AVG(final_price)::numeric, 0) AS precio_promedio,
-               ROUND(AVG(discount)::numeric, 1) AS descuento_prom
+               ROUND(AVG(discount)::numeric, 0) AS descuento_prom,
+               ROUND(AVG(rating)::numeric, 2) AS rating_prom,
+               ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)*100, 1) AS tasa_dev
         FROM analytics.fact_orders {where_ventas}
         GROUP BY subcategory, category ORDER BY ingresos DESC LIMIT 20
     """)
-    fig_sub = px.bar(df_sub, x="ingresos", y="subcategory", orientation="h",
-                     color="category", color_discrete_sequence=PLOTLY_COLORS,
-                     title="Top 20 Subcategorías por Ingresos",
-                     labels={"ingresos": "Ingresos (INR)", "subcategory": ""})
-    fig_sub.update_layout(
-        plot_bgcolor="white", paper_bgcolor="white", height=420,
-        font=dict(family=FONT, color=PALETTE["text"]),
-        title=dict(font=dict(color="#6B7A8D", size=13)),
-        margin=dict(t=40, b=20, l=10, r=10),
-        legend=dict(orientation="h", y=1.05),
-    )
-    fig_sub.update_xaxes(gridcolor="#EEF2F7")
-    st.plotly_chart(fig_sub, use_container_width=True)
+
+    def fmt_m(v):
+        if v >= 1_000_000_000: return f"₹{v/1_000_000_000:.1f}B"
+        if v >= 1_000_000:     return f"₹{v/1_000_000:.0f}M"
+        return f"₹{v:,.0f}"
+
+    df_sub_display = df_sub.copy()
+    df_sub_display["ingresos"]       = df_sub_display["ingresos"].apply(fmt_m)
+    df_sub_display["precio_promedio"]= df_sub_display["precio_promedio"].apply(lambda v: f"₹{v:,.0f}")
+    df_sub_display["descuento_prom"] = df_sub_display["descuento_prom"].apply(lambda v: f"{v:.0f}%")
+    df_sub_display["tasa_dev"]       = df_sub_display["tasa_dev"].apply(lambda v: f"{v:.1f}%")
+    df_sub_display["unidades_vendidas"] = df_sub_display["unidades_vendidas"].apply(lambda v: f"{v:,}")
+    df_sub_display = df_sub_display.rename(columns={
+        "subcategory":      "Subcategoría",
+        "category":         "Categoría",
+        "unidades_vendidas":"Unidades",
+        "ingresos":         "Ingresos",
+        "precio_promedio":  "Precio Prom.",
+        "descuento_prom":   "Descuento",
+        "rating_prom":      "Rating",
+        "tasa_dev":         "Dev %",
+    })
+
+    def color_dev(val):
+        try:
+            v = float(val.replace("%",""))
+            if v > 15: return "color:#C0392B;font-weight:600"
+            if v < 5:  return "color:#1A7F4B;font-weight:600"
+        except: pass
+        return ""
+
+    styled = df_sub_display.style        .applymap(color_dev, subset=["Dev %"])        .set_table_styles([
+            {"selector":"th","props":[
+                ("background","#F0F4F8"),("color","#5A6A7A"),
+                ("font-size","0.75rem"),("padding","8px 12px"),
+                ("font-weight","700"),("text-transform","uppercase"),
+                ("letter-spacing","0.04em"),
+            ]},
+            {"selector":"td","props":[
+                ("font-size","0.82rem"),("padding","7px 12px"),
+                ("border-bottom","1px solid #F0F4F8"),
+            ]},
+            {"selector":"tr:hover td","props":[("background","#F8FAFC")]},
+        ])        .hide(axis="index")
+
+    st.dataframe(styled, use_container_width=True, height=480)
 
 with tab3:
     df_brand = query(f"""
@@ -241,74 +314,97 @@ with tab3:
         FROM analytics.fact_orders {where_ventas}
         GROUP BY brand ORDER BY ingresos DESC LIMIT 20
     """)
+    df_brand["label"] = df_brand["ingresos"].apply(lambda v:
+        f"₹{v/1_000_000_000:.1f}B" if v >= 1_000_000_000 else
+        f"₹{v/1_000_000:.0f}M" if v >= 1_000_000 else f"₹{v:,.0f}"
+    )
+    # Calcular rango para que se vean diferencias
+    min_ing = df_brand["ingresos"].min() * 0.95
+    max_ing = df_brand["ingresos"].max() * 1.08
+
     fig_brand = px.bar(df_brand, x="ingresos", y="brand", orientation="h",
-                       color_discrete_sequence=[PALETTE["primary"]],
-                       text="ingresos",
+                       color_discrete_sequence=[PALETTE["primary_light"]],
+                       text="label",
                        title="Top 20 Marcas por Ingresos",
-                       labels={"ingresos": "Ingresos (INR)", "brand": ""})
-    fig_brand.update_traces(texttemplate="₹%{text:,.0f}", textposition="outside")
+                       labels={"ingresos": "Ingresos (INR)", "brand": ""},
+                       custom_data=["precio_promedio","descuento_prom","rating_prom","unidades_vendidas"])
+    fig_brand.update_traces(
+        textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Ingresos: %{text}<br>Precio prom: ₹%{customdata[0]:,.0f}<br>Descuento: %{customdata[1]:.0f}%<br>Rating: %{customdata[2]:.2f}<br>Unidades: %{customdata[3]:,}<extra></extra>",
+    )
     fig_brand.update_layout(
-        plot_bgcolor="white", paper_bgcolor="white", height=420,
+        plot_bgcolor="white", paper_bgcolor="white", height=520,
         font=dict(family=FONT, color=PALETTE["text"]),
         title=dict(font=dict(color="#6B7A8D", size=13)),
         margin=dict(t=40, b=20, l=10, r=90),
+        hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=12)),
     )
-    fig_brand.update_xaxes(gridcolor="#EEF2F7")
+    fig_brand.update_xaxes(gridcolor="#EEF2F7", range=[min_ing, max_ing])
     st.plotly_chart(fig_brand, use_container_width=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Descuento vs volumen + dispositivo x categoria ───────
-col_desc, col_disp = st.columns(2)
+# ── Correlacion descuento → ordenes en el tiempo ─────────
 
-with col_desc:
-    df_desc = query("""
-        SELECT discount_range, total_orders, total_revenue
-        FROM analytics.mart_discount_vs_orders
-        ORDER BY discount_range
-    """)
-    fig_desc = make_subplots(specs=[[{"secondary_y": True}]])
-    fig_desc.add_trace(go.Bar(
-        x=df_desc["discount_range"], y=df_desc["total_orders"],
-        name="Órdenes", marker_color=PALETTE["primary_light"], opacity=0.85,
-    ), secondary_y=False)
-    fig_desc.add_trace(go.Scatter(
-        x=df_desc["discount_range"], y=df_desc["total_revenue"],
-        name="Ingresos", mode="lines+markers",
-        line=dict(color=PALETTE["accent"], width=2),
-    ), secondary_y=True)
-    fig_desc.update_layout(
-        title=dict(text="Descuento vs Volumen de Órdenes", font=dict(color="#6B7A8D", size=13)),
-        plot_bgcolor="white", paper_bgcolor="white", height=320,
-        font=dict(family=FONT, color=PALETTE["text"]),
-        margin=dict(t=50, b=40, l=10, r=10),
-        legend=dict(orientation="h", y=1.1),
-        hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=12)),
-    )
-    fig_desc.update_xaxes(title_text="Rango de descuento", gridcolor="#EEF2F7")
-    fig_desc.update_yaxes(title_text="Órdenes", secondary_y=False, gridcolor="#EEF2F7")
-    fig_desc.update_yaxes(title_text="Ingresos (INR)", secondary_y=True, showgrid=False)
-    st.plotly_chart(fig_desc, use_container_width=True)
-
-with col_disp:
-    df_disp = query(f"""
-        SELECT device, category,
+if True:
+    df_corr = query(f"""
+        SELECT DATE_TRUNC('month', purchase_date)::date AS mes,
                COUNT(*) AS ordenes,
-               ROUND(SUM(final_price)::numeric, 0) AS ingresos
+               ROUND(AVG(discount)::numeric, 1) AS descuento_prom
         FROM analytics.fact_orders {where_ventas}
-        GROUP BY device, category ORDER BY device, ingresos DESC
+        AND DATE_TRUNC('month', purchase_date) < DATE_TRUNC('month', CURRENT_DATE)
+        GROUP BY 1 ORDER BY mes
     """)
-    fig_disp = px.bar(df_disp, x="device", y="ingresos", color="category",
-                      color_discrete_sequence=PLOTLY_COLORS, barmode="stack",
-                      title="Ingresos por Dispositivo y Categoría",
-                      labels={"ingresos": "Ingresos (INR)", "device": "Dispositivo", "category": "Categoría"})
-    fig_disp.update_layout(
-        plot_bgcolor="white", paper_bgcolor="white", height=320,
+    df_corr["mes_label"] = pd.to_datetime(df_corr["mes"]).dt.strftime("%b %Y")
+
+    def fmt_ord(v):
+        return f"{v/1_000:.1f}k" if v >= 1_000 else str(int(v))
+
+    fig_corr = go.Figure()
+    fig_corr.add_trace(go.Scatter(
+        x=df_corr["mes_label"], y=df_corr["ordenes"],
+        name="Cantidad de órdenes",
+        mode="lines+markers+text",
+        text=df_corr["ordenes"].apply(fmt_ord),
+        textposition="top center",
+        textfont=dict(size=9, color=PALETTE["text_light"], family=FONT),
+        line=dict(color=PALETTE["primary_light"], width=2.5, shape="spline"),
+        marker=dict(size=7, color=PALETTE["primary_light"], line=dict(color="white", width=1.5)),
+        fill="tozeroy", fillcolor="rgba(46,109,164,0.06)",
+        yaxis="y1",
+        customdata=df_corr[["descuento_prom"]].values,
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "Órdenes: <b>%{y:,.0f}</b><br>"
+            "Descuento prom: %{customdata[0]:.1f}%"
+            "<extra></extra>"
+        ),
+    ))
+    fig_corr.add_trace(go.Scatter(
+        x=df_corr["mes_label"], y=df_corr["descuento_prom"],
+        name="Descuento promedio (%)",
+        mode="lines+markers",
+        line=dict(color=PALETTE["accent"], width=2, dash="dot", shape="spline"),
+        marker=dict(size=7, color=PALETTE["accent"], line=dict(color="white", width=1.5)),
+        yaxis="y2",
+        hoverinfo="skip",
+    ))
+    fig_corr.update_layout(
+        title=dict(text="Correlación: Descuento Promedio → Volumen de Órdenes", font=dict(color="#6B7A8D", size=13)),
+        plot_bgcolor="white", paper_bgcolor="white", height=400,
         font=dict(family=FONT, color=PALETTE["text"]),
-        title=dict(font=dict(color="#6B7A8D", size=13)),
-        margin=dict(t=50, b=40, l=10, r=10),
-        legend=dict(orientation="h", y=1.1),
-        hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=12)),
+        margin=dict(t=50, b=50, l=10, r=60),
+        legend=dict(orientation="h", y=1.08),
+        hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=12), align="left"),
+        xaxis=dict(showgrid=False, tickangle=-30),
+        yaxis=dict(title="Órdenes", gridcolor="#EEF2F7", side="left"),
+        yaxis2=dict(title="Descuento %", overlaying="y", side="right", showgrid=False,
+                   tickformat=".0f", ticksuffix="%"),
     )
-    fig_disp.update_yaxes(gridcolor="#EEF2F7")
-    st.plotly_chart(fig_disp, use_container_width=True)
+    st.plotly_chart(fig_corr, use_container_width=True)
+    st.markdown(
+        '<div style="font-size:0.72rem;color:#9BAAB8;margin-top:-12px;">'
+        'Cuando el descuento promedio sube (línea naranja), el volumen de órdenes suele aumentar en los meses siguientes.'
+        '</div>',
+        unsafe_allow_html=True,
+    )

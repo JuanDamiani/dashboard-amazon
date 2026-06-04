@@ -170,6 +170,9 @@ def get_css():
 }}
 
 /* ── Ocultar círculo de radio en tabs ── */
+[data-testid="stRadio"] > div > label > div:first-child {{
+    display: none !important;
+}}
 /* Forzar color naranja en radio seleccionado */
 [data-testid="stRadio"] {{
     accent-color: #FF9900 !important;
@@ -178,17 +181,11 @@ def get_css():
     display: none !important;
 }}
 
-/* ── Títulos de gráficos Plotly ── */
-.js-plotly-plot .plotly .gtitle {{
-    fill: #6B7A8D !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-}}
-
 /* ── Plotly fonts ── */
 .js-plotly-plot .plotly text {{
     font-family: {FONT} !important;
 }}
+
 
 /* ── Forzar color naranja en seleccion de radio ── */
 [data-testid="stRadio"] {{
@@ -198,6 +195,38 @@ def get_css():
     background-color: #FF9900 !important;
     border-color: #FF9900 !important;
 }}
+
+
+/* ── Subtabs (st.tabs) — color naranja ── */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {{
+    border-bottom: 2px solid #E4E9F0 !important;
+    gap: 0 !important;
+}}
+[data-testid="stTabs"] [data-baseweb="tab"] {{
+    padding: 8px 20px !important;
+    font-size: 0.88rem !important;
+    font-weight: 500 !important;
+    color: #6B7A8D !important;
+    background: transparent !important;
+    border-bottom: 3px solid transparent !important;
+}}
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {{
+    color: #1C3F5E !important;
+}}
+[data-testid="stTabs"] [aria-selected="true"] {{
+    color: #FF9900 !important;
+    border-bottom: 3px solid #FF9900 !important;
+    font-weight: 700 !important;
+    background: transparent !important;
+}}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {{
+    background-color: #FF9900 !important;
+    height: 3px !important;
+}}
+[data-testid="stTabs"] [data-baseweb="tab-border"] {{
+    background-color: #E4E9F0 !important;
+}}
+
 
 </style>
 """
