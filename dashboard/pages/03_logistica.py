@@ -49,7 +49,7 @@ with tabs_col:
         key="main_nav",
     )
     if selected_tab == "Overview":
-        st.switch_page("app.py")
+        st.switch_page("pages/01_overview.py")
     elif selected_tab == "Ventas":
         st.switch_page("pages/02_ventas.py")
     elif selected_tab == "Clientes":
