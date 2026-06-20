@@ -71,3 +71,8 @@ Thumbs.db
 *.sqlite
 *.db
 *.log
+
+__pycache__/
+*.pyc
+data/input/*.csv
+.streamlit/secrets.toml

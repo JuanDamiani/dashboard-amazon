@@ -1,9 +1,21 @@
 """
-Filtros globales con session_state — RF2.
-Los filtros se mantienen al navegar entre páginas.
+Filtros globales + locales con session_state (RF2, RF8).
+
+- Single source of truth: cada widget usa su propia key flt_*.
+- Reset real via on_click.
+- Locales (subcategoria, marca, estado_entrega, rating) solo aplican en las
+  paginas que los declaran en extra_filters (RF2: filtros propios de cada seccion).
+- Dimensiones (categoria, subcategoria, ciudad, dispositivo, metodo_pago, marca,
+  estado_entrega) son MULTISELECT: vacio = todas, varias = IN (...). (SRS)
+- Periodo: presets + opcion "Personalizado" con calendario (dia/mes/anio).
+  El desplegable decide cual manda, asi nunca chocan preset y calendario.
+
+  extra_filters=[]   -> sin filtros locales (y sin boton "Mas filtros").
+  extra_filters=None -> todos los locales.
 """
 
 import streamlit as st
+import pandas as pd
 from dateutil.relativedelta import relativedelta
 from utils.db import query
 
@@ -14,12 +26,28 @@ PERIODO_OPCIONES = {
     "Últimos 3 meses": relativedelta(months=3),
     "Último año":      relativedelta(years=1),
     "Todo el período": None,
+    "Personalizado":   None,   # se maneja por nombre, usa el calendario
 }
+
+# Dimensiones multiselect: vacio = todas
+DEFAULTS = {
+    "flt_periodo":        "Últimos 6 meses",
+    "flt_categoria":      [],
+    "flt_ciudad":         [],
+    "flt_dispositivo":    [],
+    "flt_metodo_pago":    [],
+    "flt_subcategoria":   [],
+    "flt_marca":          [],
+    "flt_estado_entrega": [],
+    "flt_rating":         (1.0, 5.0),
+    "more_filters_open":  False,
+}
+
+ALL_LOCAL = ["subcategoria", "marca", "estado_entrega", "rating"]
 
 
 @st.cache_data(ttl=3600)
 def load_filter_options():
-    """Carga las opciones de filtros una sola vez."""
     dr     = query("SELECT MIN(purchase_date) AS mn, MAX(purchase_date) AS mx FROM analytics.fact_orders")
     cats   = query("SELECT DISTINCT category        FROM analytics.fact_orders ORDER BY category")["category"].tolist()
     locs   = query("SELECT DISTINCT location        FROM analytics.fact_orders ORDER BY location")["location"].tolist()
@@ -32,185 +60,198 @@ def load_filter_options():
 
 
 def init_filters():
-    """Inicializa los filtros en session_state si no existen."""
-    defaults = {
-        "f_periodo":        "Últimos 6 meses",
-        "f_categoria":      "Todas",
-        "f_ciudad":         "Todas",
-        "f_dispositivo":    "Todos",
-        "f_metodo_pago":    "Todos",
-        "f_subcategoria":   "Todas",
-        "f_marca":          "Todas",
-        "f_estado_entrega": "Todos",
-        "f_rating_min":     1.0,
-        "f_rating_max":     5.0,
-        "more_filters_open": False,
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
+    for k, v in DEFAULTS.items():
+        st.session_state.setdefault(k, v)
+
+
+def _clear_filters():
+    for k in list(st.session_state.keys()):
+        if k.startswith("flt_"):
+            del st.session_state[k]
+    st.session_state["more_filters_open"] = False
+
+
+def _toggle_more():
+    st.session_state["more_filters_open"] = not st.session_state.get("more_filters_open", False)
+
+
+def _clean_multi(key, options):
+    """Quita de la seleccion valores que ya no existen (evita que el multiselect falle)."""
+    cur = st.session_state.get(key, [])
+    valid = [v for v in cur if v in options]
+    if valid != cur:
+        st.session_state[key] = valid
+
+
+def _esc(v):
+    return str(v).replace("'", "''")
+
+
+def _in(col, values):
+    inner = ", ".join(f"'{_esc(v)}'" for v in values)
+    return f"{col} IN ({inner})"
 
 
 def render_filters(extra_filters=None):
-    """
-    Renderiza la barra de filtros globales.
-    extra_filters: lista de filtros adicionales para mostrar en 'Más filtros'
-    Opciones: 'subcategoria', 'marca', 'estado_entrega', 'rating'
-    """
     init_filters()
     dr, cats, locs, devs, pays, subs, brands, stats = load_filter_options()
-    min_date = dr["mn"].iloc[0]
-    max_date = dr["mx"].iloc[0]
+    min_date = pd.to_datetime(dr["mn"].iloc[0]).date()
+    max_date = pd.to_datetime(dr["mx"].iloc[0]).date()
 
-    # ── Fila principal de filtros ────────────────────────
-    fc = st.columns([2, 1.5, 1.5, 1.5, 1.5, 1.1, 0.5])
+    extra = list(ALL_LOCAL) if extra_filters is None else list(extra_filters)
+    local_active = set(extra)
+
+    # ── Fila principal (globales) ───────────────────────────
+    fc = st.columns([1.7, 1.6, 1.6, 1.6, 1.6, 1.1, 0.5])
 
     with fc[0]:
         st.caption("Período")
-        st.session_state["f_periodo"] = st.selectbox(
-            "Período", list(PERIODO_OPCIONES.keys()),
-            index=list(PERIODO_OPCIONES.keys()).index(st.session_state["f_periodo"]),
-            label_visibility="collapsed", key="_sel_periodo",
-        )
+        st.selectbox("Período", list(PERIODO_OPCIONES.keys()),
+                     key="flt_periodo", label_visibility="collapsed")
 
     with fc[1]:
         st.caption("Categoría")
-        st.session_state["f_categoria"] = st.selectbox(
-            "Categoría", ["Todas"] + cats,
-            index=(["Todas"] + cats).index(st.session_state["f_categoria"]) if st.session_state["f_categoria"] in ["Todas"] + cats else 0,
-            label_visibility="collapsed", key="_sel_categoria",
-        )
+        _clean_multi("flt_categoria", cats)
+        st.multiselect("Categoría", cats, key="flt_categoria",
+                       placeholder="Todas", label_visibility="collapsed")
 
     with fc[2]:
         st.caption("Ciudad")
-        st.session_state["f_ciudad"] = st.selectbox(
-            "Ciudad", ["Todas"] + locs,
-            index=(["Todas"] + locs).index(st.session_state["f_ciudad"]) if st.session_state["f_ciudad"] in ["Todas"] + locs else 0,
-            label_visibility="collapsed", key="_sel_ciudad",
-        )
+        _clean_multi("flt_ciudad", locs)
+        st.multiselect("Ciudad", locs, key="flt_ciudad",
+                       placeholder="Todas", label_visibility="collapsed")
 
     with fc[3]:
         st.caption("Dispositivo")
-        st.session_state["f_dispositivo"] = st.selectbox(
-            "Dispositivo", ["Todos"] + devs,
-            index=(["Todos"] + devs).index(st.session_state["f_dispositivo"]) if st.session_state["f_dispositivo"] in ["Todos"] + devs else 0,
-            label_visibility="collapsed", key="_sel_dispositivo",
-        )
+        _clean_multi("flt_dispositivo", devs)
+        st.multiselect("Dispositivo", devs, key="flt_dispositivo",
+                       placeholder="Todos", label_visibility="collapsed")
 
     with fc[4]:
         st.caption("Método de pago")
-        st.session_state["f_metodo_pago"] = st.selectbox(
-            "Método de pago", ["Todos"] + pays,
-            index=(["Todos"] + pays).index(st.session_state["f_metodo_pago"]) if st.session_state["f_metodo_pago"] in ["Todos"] + pays else 0,
-            label_visibility="collapsed", key="_sel_metodo",
-        )
+        _clean_multi("flt_metodo_pago", pays)
+        st.multiselect("Método de pago", pays, key="flt_metodo_pago",
+                       placeholder="Todos", label_visibility="collapsed")
 
     with fc[5]:
         st.caption(" ")
-        if st.button("🎛️ Más filtros", key="_btn_more", use_container_width=True):
-            st.session_state["more_filters_open"] = not st.session_state["more_filters_open"]
+        if extra:
+            st.button("🎛️ Más filtros", key="_btn_more",
+                      on_click=_toggle_more, use_container_width=True)
 
     with fc[6]:
         st.caption(" ")
-        if st.button("🗑️", help="Limpiar filtros", key="_btn_clear"):
-            keys_to_clear = [k for k in st.session_state.keys() if k.startswith("f_") or k == "more_filters_open"]
-            for k in keys_to_clear:
-                del st.session_state[k]
-            st.rerun()
+        st.button("🗑️", help="Limpiar filtros", key="_btn_clear",
+                  on_click=_clear_filters)
 
-    # ── Más filtros ──────────────────────────────────────
-    if st.session_state.get("more_filters_open", False):
-        extra = extra_filters or ["subcategoria", "marca", "estado_entrega", "rating"]
+    # ── Calendario (solo si Período = Personalizado) ────────
+    if st.session_state["flt_periodo"] == "Personalizado":
+        dc = st.columns([2.3, 4.7])
+        with dc[0]:
+            st.caption("Rango de fechas")
+            st.date_input(
+                "Rango", value=(min_date, max_date),
+                min_value=min_date, max_value=max_date,
+                key="flt_fecha_rango", label_visibility="collapsed",
+                format="DD/MM/YYYY",
+            )
+
+    # ── Fila de filtros locales ─────────────────────────────
+    if extra and st.session_state.get("more_filters_open", False):
         mc = st.columns(len(extra))
-
         for i, filtro in enumerate(extra):
             with mc[i]:
                 if filtro == "subcategoria":
                     st.caption("Subcategoría")
-                    st.session_state["f_subcategoria"] = st.selectbox(
-                        "Subcategoría", ["Todas"] + subs,
-                        index=(["Todas"] + subs).index(st.session_state["f_subcategoria"]) if st.session_state["f_subcategoria"] in ["Todas"] + subs else 0,
-                        label_visibility="collapsed", key="_sel_sub",
-                    )
+                    _clean_multi("flt_subcategoria", subs)
+                    st.multiselect("Subcategoría", subs, key="flt_subcategoria",
+                                   placeholder="Todas", label_visibility="collapsed")
                 elif filtro == "marca":
                     st.caption("Marca")
-                    st.session_state["f_marca"] = st.selectbox(
-                        "Marca", ["Todas"] + brands,
-                        index=(["Todas"] + brands).index(st.session_state["f_marca"]) if st.session_state["f_marca"] in ["Todas"] + brands else 0,
-                        label_visibility="collapsed", key="_sel_marca",
-                    )
+                    _clean_multi("flt_marca", brands)
+                    st.multiselect("Marca", brands, key="flt_marca",
+                                   placeholder="Todas", label_visibility="collapsed")
                 elif filtro == "estado_entrega":
                     st.caption("Estado de entrega")
-                    st.session_state["f_estado_entrega"] = st.selectbox(
-                        "Estado", ["Todos"] + stats,
-                        index=(["Todos"] + stats).index(st.session_state["f_estado_entrega"]) if st.session_state["f_estado_entrega"] in ["Todos"] + stats else 0,
-                        label_visibility="collapsed", key="_sel_estado",
-                    )
+                    _clean_multi("flt_estado_entrega", stats)
+                    st.multiselect("Estado", stats, key="flt_estado_entrega",
+                                   placeholder="Todos", label_visibility="collapsed")
                 elif filtro == "rating":
                     st.caption("Rango de rating")
-                    vals = st.slider(
-                        "Rating", 1.0, 5.0,
-                        (st.session_state["f_rating_min"], st.session_state["f_rating_max"]),
-                        0.5, label_visibility="collapsed", key="_sel_rating",
-                    )
-                    st.session_state["f_rating_min"] = vals[0]
-                    st.session_state["f_rating_max"] = vals[1]
+                    st.slider("Rating", 1.0, 5.0, step=0.5,
+                              key="flt_rating", label_visibility="collapsed")
 
-    # ── Indicador filtros activos ─────────────────────────
+    # ── Indicador de filtros activos (alto fijo, sin salto) ─
     n_activos = sum([
-        st.session_state["f_categoria"]      != "Todas",
-        st.session_state["f_ciudad"]         != "Todas",
-        st.session_state["f_dispositivo"]    != "Todos",
-        st.session_state["f_metodo_pago"]    != "Todos",
-        st.session_state["f_subcategoria"]   != "Todas",
-        st.session_state["f_marca"]          != "Todas",
-        st.session_state["f_estado_entrega"] != "Todos",
-        st.session_state["f_periodo"]        != "Últimos 6 meses",
+        bool(st.session_state["flt_categoria"]),
+        bool(st.session_state["flt_ciudad"]),
+        bool(st.session_state["flt_dispositivo"]),
+        bool(st.session_state["flt_metodo_pago"]),
+        st.session_state["flt_periodo"] != "Últimos 6 meses",
     ])
-    if n_activos > 0:
-        st.markdown(
-            f'<div style="font-size:0.72rem;color:#FF9900;padding:2px 0 6px 0;">'
-            f'● {n_activos} filtro{"s" if n_activos>1 else ""} activo{"s" if n_activos>1 else ""}'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+    if "subcategoria"   in local_active: n_activos += bool(st.session_state["flt_subcategoria"])
+    if "marca"          in local_active: n_activos += bool(st.session_state["flt_marca"])
+    if "estado_entrega" in local_active: n_activos += bool(st.session_state["flt_estado_entrega"])
+    if "rating"         in local_active: n_activos += tuple(st.session_state["flt_rating"]) != (1.0, 5.0)
 
-    # ── Construir WHERE ───────────────────────────────────
-    _delta = PERIODO_OPCIONES.get(st.session_state["f_periodo"])
-    from utils.db import query as _q
-    dr2 = _q("SELECT MAX(purchase_date) AS mx FROM analytics.fact_orders")
-    max_d = dr2["mx"].iloc[0]
-    min_d = dr["mn"].iloc[0]
+    texto = (
+        f'● {n_activos} filtro{"s" if n_activos > 1 else ""} '
+        f'activo{"s" if n_activos > 1 else ""}'
+        if n_activos > 0 else ""
+    )
+    st.markdown(
+        f'<div style="font-size:0.72rem;color:#FF9900;height:1.1rem;'
+        f'line-height:1.1rem;padding:2px 0 6px 0;">{texto}</div>',
+        unsafe_allow_html=True,
+    )
 
-    fecha_inicio = max_d - _delta if _delta else min_d
-    fecha_fin    = max_d
+    # ── Rango de fechas efectivo ────────────────────────────
+    periodo = st.session_state["flt_periodo"]
+    if periodo == "Personalizado":
+        rango = st.session_state.get("flt_fecha_rango")
+        if isinstance(rango, (tuple, list)) and len(rango) == 2:
+            fecha_inicio, fecha_fin = rango[0], rango[1]
+        else:
+            fecha_inicio, fecha_fin = min_date, max_date
+    else:
+        delta = PERIODO_OPCIONES.get(periodo)
+        fecha_inicio = (max_date - delta) if delta else min_date
+        fecha_fin    = max_date
 
+    # ── Construir WHERE ─────────────────────────────────────
     conds = [f"purchase_date BETWEEN '{fecha_inicio}' AND '{fecha_fin}'"]
 
-    if st.session_state["f_categoria"]      != "Todas":  conds.append(f"category = '{st.session_state['f_categoria']}'")
-    if st.session_state["f_ciudad"]         != "Todas":  conds.append(f"location = '{st.session_state['f_ciudad']}'")
-    if st.session_state["f_dispositivo"]    != "Todos":  conds.append(f"device = '{st.session_state['f_dispositivo']}'")
-    if st.session_state["f_metodo_pago"]    != "Todos":  conds.append(f"payment_method = '{st.session_state['f_metodo_pago']}'")
-    if st.session_state["f_subcategoria"]   != "Todas":  conds.append(f"subcategory = '{st.session_state['f_subcategoria']}'")
-    if st.session_state["f_marca"]          != "Todas":  conds.append(f"brand = '{st.session_state['f_marca']}'")
-    if st.session_state["f_estado_entrega"] != "Todos":  conds.append(f"delivery_status = '{st.session_state['f_estado_entrega']}'")
+    # Globales (multiselect): siempre
+    if st.session_state["flt_categoria"]:   conds.append(_in("category",       st.session_state["flt_categoria"]))
+    if st.session_state["flt_ciudad"]:      conds.append(_in("location",       st.session_state["flt_ciudad"]))
+    if st.session_state["flt_dispositivo"]: conds.append(_in("device",         st.session_state["flt_dispositivo"]))
+    if st.session_state["flt_metodo_pago"]: conds.append(_in("payment_method", st.session_state["flt_metodo_pago"]))
 
-    conds_rating = conds + [f"rating BETWEEN {st.session_state['f_rating_min']} AND {st.session_state['f_rating_max']}"]
+    # Locales: solo si la pagina los declara
+    if "subcategoria"   in local_active and st.session_state["flt_subcategoria"]:   conds.append(_in("subcategory",     st.session_state["flt_subcategoria"]))
+    if "marca"          in local_active and st.session_state["flt_marca"]:          conds.append(_in("brand",           st.session_state["flt_marca"]))
+    if "estado_entrega" in local_active and st.session_state["flt_estado_entrega"]: conds.append(_in("delivery_status", st.session_state["flt_estado_entrega"]))
+
+    rating_min, rating_max = st.session_state["flt_rating"]
+    if "rating" in local_active:
+        conds_rating = conds + [f"rating BETWEEN {rating_min} AND {rating_max}"]
+    else:
+        conds_rating = list(conds)
 
     return {
         "where":           "WHERE " + " AND ".join(conds),
         "where_rating":    "WHERE " + " AND ".join(conds_rating),
         "fecha_inicio":    fecha_inicio,
         "fecha_fin":       fecha_fin,
-        "periodo":         st.session_state["f_periodo"],
-        "categoria":       st.session_state["f_categoria"],
-        "ciudad":          st.session_state["f_ciudad"],
-        "dispositivo":     st.session_state["f_dispositivo"],
-        "metodo_pago":     st.session_state["f_metodo_pago"],
-        "subcategoria":    st.session_state["f_subcategoria"],
-        "marca":           st.session_state["f_marca"],
-        "estado_entrega":  st.session_state["f_estado_entrega"],
-        "rating_min":      st.session_state["f_rating_min"],
-        "rating_max":      st.session_state["f_rating_max"],
+        "periodo":         periodo,
+        "categoria":       st.session_state["flt_categoria"],
+        "ciudad":          st.session_state["flt_ciudad"],
+        "dispositivo":     st.session_state["flt_dispositivo"],
+        "metodo_pago":     st.session_state["flt_metodo_pago"],
+        "subcategoria":    st.session_state["flt_subcategoria"],
+        "marca":           st.session_state["flt_marca"],
+        "estado_entrega":  st.session_state["flt_estado_entrega"],
+        "rating_min":      rating_min,
+        "rating_max":      rating_max,
         "filtros_activos": n_activos,
     }

@@ -5,58 +5,16 @@ Overview — RF1
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import pandas as pd
 
 from utils.db import query
 from utils.filters import render_filters
-from utils.style import get_css, kpi_card, PALETTE, PLOTLY_COLORS, FONT
+from utils.style import kpi_card, PALETTE, PLOTLY_COLORS, FONT
 
-st.markdown(get_css(), unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-[data-testid="stSidebar"] { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; }
-.block-container { padding-top: 0 !important; max-width: 100% !important; }
-</style>
-""", unsafe_allow_html=True)
-
-# ── HEADER ───────────────────────────────────────────────
-header_col, tabs_col = st.columns([1, 5])
-with header_col:
-    st.markdown("""
-    <div style="padding: 12px 0 0 8px;">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg"
-             style="width: 90px;" />
-    </div>
-    """, unsafe_allow_html=True)
-
-with tabs_col:
-    tab_names = ["Overview", "Ventas", "Logística", "Clientes", "Vendedores", "Glosario"]
-    selected_tab = st.radio(
-        "nav", tab_names, horizontal=True,
-        label_visibility="collapsed", index=0, key="main_nav",
-    )
-    if selected_tab == "Ventas":
-        st.switch_page("pages/02_ventas.py")
-    elif selected_tab == "Logística":
-        st.switch_page("pages/03_logistica.py")
-    elif selected_tab == "Clientes":
-        st.switch_page("pages/04_clientes.py")
-    elif selected_tab == "Vendedores":
-        st.switch_page("pages/05_vendedores.py")
-    elif selected_tab == "Glosario":
-        st.switch_page("pages/06_glosario.py")
-
-st.markdown('<hr style="margin: 0 0 8px 0; border-color: #E4E9F0;">', unsafe_allow_html=True)
-
-# ── FILTROS ───────────────────────────────────────────────
-filters      = render_filters()
+# ── FILTROS (solo globales, RF1) ─────────────────────────
+filters      = render_filters(extra_filters=[])
 where        = filters["where"]
 where_rating = filters["where_rating"]
-
-st.markdown('<hr style="margin: 4px 0 12px 0; border-color: #E4E9F0;">', unsafe_allow_html=True)
 
 # ── KPIs ─────────────────────────────────────────────────
 kpis = query(f"""

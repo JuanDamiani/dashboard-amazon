@@ -1,5 +1,6 @@
 """
 Pagina de Analisis Logistico — RF4
+Todos los indicadores responden a los filtros globales + estado_entrega (RF2/RF4).
 """
 
 import streamlit as st
@@ -9,71 +10,29 @@ import pandas as pd
 
 from utils.db import query
 from utils.filters import render_filters
-from utils.style import get_css, kpi_card, PALETTE, PLOTLY_COLORS, FONT
+from utils.style import kpi_card, PALETTE, FONT
 
-st.set_page_config(
-    page_title="Logística | Amazon Analytics",
-    page_icon="📦",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+# ── Etiquetas de delivery_status (ajustar si tu dataset usa otras) ──
+STATUS_ON_TIME = "On Time"
+STATUS_DELAYED = "Delayed"
 
-st.markdown(get_css(), unsafe_allow_html=True)
+# ── FILTROS: globales + local (estado_entrega) — RF4 ─────
+filters   = render_filters(extra_filters=["estado_entrega"])
+where_log = filters["where"]
 
-st.markdown("""
-<style>
-[data-testid="stSidebar"] { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; }
-.block-container { padding-top: 0 !important; max-width: 100% !important; }
-</style>
-""", unsafe_allow_html=True)
-
-# ── HEADER: Logo + Tabs ──────────────────────────────────
-header_col, tabs_col = st.columns([1, 5])
-
-with header_col:
-    st.markdown("""
-    <div style="padding: 12px 0 0 8px;">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg"
-             style="width: 90px;" />
-    </div>
-    """, unsafe_allow_html=True)
-
-with tabs_col:
-    tab_names = ["Overview", "Ventas", "Logística", "Clientes", "Vendedores", "Glosario"]
-    selected_tab = st.radio(
-        "nav", tab_names,
-        horizontal=True,
-        label_visibility="collapsed",
-        index=2,
-        key="main_nav",
-    )
-    if selected_tab == "Overview":
-        st.switch_page("pages/01_overview.py")
-    elif selected_tab == "Ventas":
-        st.switch_page("pages/02_ventas.py")
-    elif selected_tab == "Clientes":
-        st.switch_page("pages/04_clientes.py")
-    elif selected_tab == "Vendedores":
-        st.switch_page("pages/05_vendedores.py")
-    elif selected_tab == "Glosario":
-        st.switch_page("pages/06_glosario.py")
-
-st.markdown('<hr style="margin: 0 0 8px 0; border-color: #E4E9F0;">', unsafe_allow_html=True)
-
-# ── FILTROS (RF2 + filtro adicional estado_entrega) ──────
-filters      = render_filters(extra_filters=["estado_entrega"])
-where        = filters["where"]
-where_log    = where
-
-st.markdown('<hr style="margin: 4px 0 12px 0; border-color: #E4E9F0;">', unsafe_allow_html=True)
-
-# ── KPIs ─────────────────────────────────────────────────
-df_perf  = query("SELECT * FROM analytics.mart_delivery_performance")
-avg_ship = query(f"SELECT ROUND(AVG(shipping_time_days)::numeric,1) AS v FROM analytics.fact_orders {where_log}")["v"].iloc[0]
-ret_rate = query(f"SELECT ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)::numeric*100,1) AS v FROM analytics.fact_orders {where_log}")["v"].iloc[0]
-pct_on_time = float(df_perf["pct_on_time"].iloc[0]) if len(df_perf) > 0 else 0
-pct_delayed = float(df_perf["pct_delayed"].iloc[0]) if len(df_perf) > 0 else 0
+# ── KPIs (todos filtrados, una sola query) ───────────────
+kpis_log = query(f"""
+    SELECT
+        ROUND(AVG(shipping_time_days)::numeric, 1) AS avg_ship,
+        ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)::numeric * 100, 1) AS ret_rate,
+        ROUND(AVG(CASE WHEN delivery_status = '{STATUS_ON_TIME}' THEN 1.0 ELSE 0.0 END)::numeric * 100, 1) AS pct_on_time,
+        ROUND(AVG(CASE WHEN delivery_status = '{STATUS_DELAYED}' THEN 1.0 ELSE 0.0 END)::numeric * 100, 1) AS pct_delayed
+    FROM analytics.fact_orders {where_log}
+""")
+avg_ship    = kpis_log["avg_ship"].iloc[0]
+ret_rate    = kpis_log["ret_rate"].iloc[0]
+pct_on_time = kpis_log["pct_on_time"].iloc[0]
+pct_delayed = kpis_log["pct_delayed"].iloc[0]
 
 ICON_CHECK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'
 ICON_TRUCK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>'
@@ -81,7 +40,7 @@ ICON_WARN  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke
 ICON_RET   = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>'
 
 c1, c2, c3, c4 = st.columns(4)
-c1.markdown(kpi_card("Entregas a Tiempo",  f"{pct_on_time}%",  None, ICON_CHECK, "% de pedidos entregados sin demoras."), unsafe_allow_html=True)
+c1.markdown(kpi_card("Entregas a Tiempo",  f"{pct_on_time}%",  None, ICON_CHECK, "% de pedidos entregados a tiempo en el período filtrado."), unsafe_allow_html=True)
 c2.markdown(kpi_card("Tiempo Prom. Envío", f"{avg_ship} días", None, ICON_TRUCK, "Días promedio desde la compra hasta la entrega."), unsafe_allow_html=True)
 c3.markdown(kpi_card("Pedidos Demorados",  f"{pct_delayed}%",  None, ICON_WARN,  "% de pedidos con demoras. >20% requiere atención."), unsafe_allow_html=True)
 c4.markdown(kpi_card("Tasa Devolución",    f"{ret_rate}%",     None, ICON_RET,   "% de órdenes devueltas en el período."), unsafe_allow_html=True)
@@ -163,11 +122,11 @@ with col3:
     fig3 = px.bar(df_ret_cat, x="tasa_dev", y="category", orientation="h",
                   text="tasa_dev", color_discrete_sequence=[PALETTE["danger"]],
                   title="Tasa de Devolución por Categoría (%)",
+                  custom_data=["ordenes"],
                   labels={"tasa_dev":"%","category":""})
     fig3.update_traces(
         texttemplate="%{text:.1f}%", textposition="outside",
         hovertemplate="<b>%{y}</b><br>Dev: %{x:.1f}%<br>Órdenes: %{customdata[0]:,}<extra></extra>",
-        customdata=df_ret_cat[["ordenes"]].values,
     )
     fig3.update_layout(
         title=dict(font=dict(color="#6B7A8D", size=13)),
@@ -190,11 +149,11 @@ with col4:
     fig4 = px.bar(df_ret_city, x="tasa_dev", y="location", orientation="h",
                   text="tasa_dev", color_discrete_sequence=[PALETTE["danger"]],
                   title="Tasa de Devolución por Ciudad (%)",
+                  custom_data=["ordenes"],
                   labels={"tasa_dev":"%","location":""})
     fig4.update_traces(
         texttemplate="%{text:.1f}%", textposition="outside",
         hovertemplate="<b>%{y}</b><br>Dev: %{x:.1f}%<br>Órdenes: %{customdata[0]:,}<extra></extra>",
-        customdata=df_ret_city[["ordenes"]].values,
     )
     fig4.update_layout(
         title=dict(font=dict(color="#6B7A8D", size=13)),
@@ -214,7 +173,7 @@ col5, col6 = st.columns(2)
 with col5:
     df_trend = query(f"""
         SELECT DATE_TRUNC('month', purchase_date)::date AS mes,
-               ROUND(AVG(CASE WHEN delivery_status = 'Delayed' THEN 1.0 ELSE 0.0 END) * 100, 1) AS pct_demorados,
+               ROUND(AVG(CASE WHEN delivery_status = '{STATUS_DELAYED}' THEN 1.0 ELSE 0.0 END) * 100, 1) AS pct_demorados,
                COUNT(*) AS ordenes
         FROM analytics.fact_orders {where_log}
         AND DATE_TRUNC('month', purchase_date) < DATE_TRUNC('month', CURRENT_DATE)
@@ -243,7 +202,14 @@ with col5:
     st.plotly_chart(fig5, use_container_width=True)
 
 with col6:
-    df_dvr = query("SELECT shipping_time_days, total_orders, return_rate FROM analytics.mart_delays_vs_returns ORDER BY shipping_time_days")
+    # Filtrado: dias de envio vs tasa de devolucion (antes leia un mart global)
+    df_dvr = query(f"""
+        SELECT shipping_time_days,
+               COUNT(*) AS total_orders,
+               ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100, 1) AS return_rate
+        FROM analytics.fact_orders {where_log}
+        GROUP BY shipping_time_days ORDER BY shipping_time_days
+    """)
     fig6 = go.Figure()
     fig6.add_trace(go.Scatter(
         x=df_dvr["shipping_time_days"], y=df_dvr["return_rate"],
@@ -330,8 +296,15 @@ st.plotly_chart(fig_map, use_container_width=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Metodo de pago vs devolucion ─────────────────────────
-df_pay_ret = query("SELECT payment_method, total_orders, returned_orders, return_rate FROM analytics.mart_payment_vs_returns ORDER BY return_rate DESC")
+# ── Metodo de pago vs devolucion (filtrado) ──────────────
+df_pay_ret = query(f"""
+    SELECT payment_method,
+           COUNT(*) AS total_orders,
+           SUM(CASE WHEN is_returned THEN 1 ELSE 0 END) AS returned_orders,
+           ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100, 1) AS return_rate
+    FROM analytics.fact_orders {where_log}
+    GROUP BY payment_method ORDER BY return_rate DESC
+""")
 fig7 = px.bar(df_pay_ret, x="payment_method", y="return_rate",
               text="return_rate", color_discrete_sequence=[PALETTE["warning"]],
               title="Tasa de Devolución por Método de Pago (%)",

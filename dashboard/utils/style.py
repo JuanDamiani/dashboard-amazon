@@ -1,6 +1,6 @@
 """
 Estilos globales — Amazon E-Commerce Analytics
-Sin sidebar. Layout con tabs horizontales.
+Sin sidebar. Navegacion nativa arriba (st.navigation position="top").
 """
 
 PALETTE = {
@@ -45,16 +45,26 @@ def get_css():
     background-color: {p['bg']};
 }}
 
-/* ── Ocultar sidebar y elementos nativos ── */
+/* ── Ocultar sidebar (incluye el duplicado de la nav en Streamlit 1.52) ── */
 [data-testid="stSidebar"] {{
     display: none !important;
 }}
 [data-testid="collapsedControl"] {{
     display: none !important;
 }}
-#MainMenu, footer, header {{
+
+/* ── Ocultar menu/footer, PERO NO el header (ahi va la nav nativa y el logo) ── */
+#MainMenu, footer {{
     visibility: hidden;
 }}
+
+/* ── Ocultar solo decoracion / toolbar / status, sin tocar el header ── */
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+[data-testid="stToolbar"] {{
+    display: none !important;
+}}
+
 .block-container {{
     padding-top: 0.5rem !important;
     padding-bottom: 1rem !important;
@@ -120,7 +130,7 @@ def get_css():
     border-bottom: 1px solid {p['border']};
 }}
 
-/* ── Tabs de navegacion estilo Amazon ── */
+/* ── Radio horizontal estilo tabs (toggle Revenue/Cantidad, etc.) ── */
 [data-testid="stRadio"] {{
     margin-top: 4px;
 }}
@@ -158,6 +168,15 @@ def get_css():
 [data-testid="stRadio"] input {{
     display: none !important;
 }}
+[data-testid="stRadio"] > div > label > div:first-child {{
+    display: none !important;
+}}
+[data-testid="stRadio"] label span:first-child {{
+    display: none !important;
+}}
+[data-testid="stRadio"] {{
+    accent-color: #FF9900 !important;
+}}
 
 /* ── Captions de filtros ── */
 .stCaption p {{
@@ -169,33 +188,10 @@ def get_css():
     margin-bottom: 2px !important;
 }}
 
-/* ── Ocultar círculo de radio en tabs ── */
-[data-testid="stRadio"] > div > label > div:first-child {{
-    display: none !important;
-}}
-/* Forzar color naranja en radio seleccionado */
-[data-testid="stRadio"] {{
-    accent-color: #FF9900 !important;
-}}
-[data-testid="stRadio"] label span:first-child {{
-    display: none !important;
-}}
-
 /* ── Plotly fonts ── */
 .js-plotly-plot .plotly text {{
     font-family: {FONT} !important;
 }}
-
-
-/* ── Forzar color naranja en seleccion de radio ── */
-[data-testid="stRadio"] {{
-    accent-color: #FF9900 !important;
-}}
-[data-testid="stRadio"] > div > label > div:first-child {{
-    background-color: #FF9900 !important;
-    border-color: #FF9900 !important;
-}}
-
 
 /* ── Subtabs (st.tabs) — color naranja ── */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {{
@@ -226,7 +222,6 @@ def get_css():
 [data-testid="stTabs"] [data-baseweb="tab-border"] {{
     background-color: #E4E9F0 !important;
 }}
-
 
 </style>
 """

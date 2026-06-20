@@ -1,90 +1,43 @@
 """
 Pagina de Experiencia del Cliente — RF5
+Todos los indicadores responden a los filtros globales + rango de rating.
 """
 
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-import pandas as pd
 
 from utils.db import query
 from utils.filters import render_filters
-from utils.style import get_css, kpi_card, PALETTE, PLOTLY_COLORS, FONT
+from utils.style import kpi_card, PALETTE, FONT
 
-st.set_page_config(
-    page_title="Clientes | Amazon Analytics",
-    page_icon="📦",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-st.markdown(get_css(), unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-[data-testid="stSidebar"] { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; }
-.block-container { padding-top: 0 !important; max-width: 100% !important; }
-</style>
-""", unsafe_allow_html=True)
-
-# ── HEADER: Logo + Tabs ──────────────────────────────────
-header_col, tabs_col = st.columns([1, 5])
-
-with header_col:
-    st.markdown("""
-    <div style="padding: 12px 0 0 8px;">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg"
-             style="width: 90px;" />
-    </div>
-    """, unsafe_allow_html=True)
-
-with tabs_col:
-    tab_names = ["Overview", "Ventas", "Logística", "Clientes", "Vendedores", "Glosario"]
-    selected_tab = st.radio(
-        "nav", tab_names,
-        horizontal=True,
-        label_visibility="collapsed",
-        index=3,
-        key="main_nav",
-    )
-    if selected_tab == "Overview":
-        st.switch_page("pages/01_overview.py")
-    elif selected_tab == "Ventas":
-        st.switch_page("pages/02_ventas.py")
-    elif selected_tab == "Logística":
-        st.switch_page("pages/03_logistica.py")
-    elif selected_tab == "Vendedores":
-        st.switch_page("pages/05_vendedores.py")
-    elif selected_tab == "Glosario":
-        st.switch_page("pages/06_glosario.py")
-
-st.markdown('<hr style="margin: 0 0 8px 0; border-color: #E4E9F0;">', unsafe_allow_html=True)
-
-# ── FILTROS (RF2 + filtro adicional rating) ───────────────
+# ── FILTROS: globales + local (rating) — RF5 ─────────────
 filters   = render_filters(extra_filters=["rating"])
-where     = filters["where"]
-r_min     = filters["rating_min"]
-r_max     = filters["rating_max"]
-where_cli = where + f" AND rating BETWEEN {r_min} AND {r_max}"
-
-st.markdown('<hr style="margin: 4px 0 12px 0; border-color: #E4E9F0;">', unsafe_allow_html=True)
+where_cli = filters["where_rating"]   # ya incluye el rango de rating
 
 # ── KPIs ─────────────────────────────────────────────────
-avg_rating = query(f"SELECT ROUND(AVG(rating)::numeric,2) AS v FROM analytics.fact_orders {where_cli}")["v"].iloc[0]
-ret_rate   = query(f"SELECT ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)::numeric*100,1) AS v FROM analytics.fact_orders {where_cli}")["v"].iloc[0]
-total_ord  = query(f"SELECT COUNT(*) AS v FROM analytics.fact_orders {where_cli}")["v"].iloc[0]
-avg_ticket = query(f"SELECT ROUND(AVG(final_price)::numeric,0) AS v FROM analytics.fact_orders {where_cli}")["v"].iloc[0]
+kpis_cli = query(f"""
+    SELECT
+        ROUND(AVG(rating)::numeric, 2) AS avg_rating,
+        ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)::numeric * 100, 1) AS ret_rate,
+        COUNT(*) AS total_ord,
+        ROUND(AVG(final_price)::numeric, 0) AS avg_ticket
+    FROM analytics.fact_orders {where_cli}
+""")
+avg_rating = kpis_cli["avg_rating"].iloc[0]
+ret_rate   = kpis_cli["ret_rate"].iloc[0]
+total_ord  = kpis_cli["total_ord"].iloc[0]
+avg_ticket = kpis_cli["avg_ticket"].iloc[0]
 
 def fmt_num(v):
     if v >= 1_000_000: return f"{v/1_000_000:.1f}M"
     if v >= 1_000:     return f"{v/1_000:.1f}k"
     return f"{v:,.0f}"
 
-ICON_STAR  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'
-ICON_RET   = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>'
-ICON_BOX   = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>'
-ICON_TICKET= '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z"/></svg>'
+ICON_STAR   = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'
+ICON_RET    = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>'
+ICON_BOX    = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>'
+ICON_TICKET = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z"/></svg>'
 
 c1, c2, c3, c4 = st.columns(4)
 c1.markdown(kpi_card("Rating Promedio",  str(avg_rating),       None, ICON_STAR,   "Calificación promedio de productos, escala 1 a 5."), unsafe_allow_html=True)
@@ -94,11 +47,17 @@ c4.markdown(kpi_card("Ticket Promedio",  f"₹{avg_ticket:,.0f}", None, ICON_TIC
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Distribución de ratings ──────────────────────────────
+# ── Distribución de ratings (filtrada) ───────────────────
 col1, col2 = st.columns(2)
 
 with col1:
-    df_dist = query("SELECT rating, total_orders, order_share_pct FROM analytics.mart_rating_distribution ORDER BY rating")
+    df_dist = query(f"""
+        SELECT rating,
+               COUNT(*) AS total_orders,
+               ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) AS order_share_pct
+        FROM analytics.fact_orders {where_cli}
+        GROUP BY rating ORDER BY rating
+    """)
     fig1 = px.bar(df_dist, x="rating", y="total_orders",
                   text="order_share_pct",
                   color_discrete_sequence=[PALETTE["primary_light"]],
@@ -119,7 +78,19 @@ with col1:
     st.plotly_chart(fig1, use_container_width=True)
 
 with col2:
-    df_range = query("SELECT rating_range, total_orders, order_share_pct, avg_rating, return_rate FROM analytics.mart_rating_by_range ORDER BY rating_range")
+    # Rangos de rating (bucketing explicito; ajustar limites si lo necesitas)
+    df_range = query(f"""
+        SELECT CASE WHEN rating >= 4 THEN '4-5'
+                    WHEN rating >= 3 THEN '3-4'
+                    WHEN rating >= 2 THEN '2-3'
+                    ELSE '1-2' END AS rating_range,
+               COUNT(*) AS total_orders,
+               ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) AS order_share_pct,
+               ROUND(AVG(rating)::numeric, 2) AS avg_rating,
+               ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100, 1) AS return_rate
+        FROM analytics.fact_orders {where_cli}
+        GROUP BY 1 ORDER BY 1
+    """)
     fig2 = px.bar(df_range, x="order_share_pct", y="rating_range", orientation="h",
                   text="order_share_pct",
                   color_discrete_sequence=[PALETTE["primary"]],

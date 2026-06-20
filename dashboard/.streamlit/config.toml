@@ -8,5 +8,9 @@ textColor = "#1A2332"
 [server]
 headless = true
 
+[browser]
+gatherUsageStats = false
+
 [client]
 showSidebarNavigation = false
+toolbarMode = "minimal"
