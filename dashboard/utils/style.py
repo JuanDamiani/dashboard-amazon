@@ -3,6 +3,8 @@ Estilos globales — Amazon E-Commerce Analytics
 Sin sidebar. Navegacion nativa arriba (st.navigation position="top").
 """
 
+import streamlit as st
+
 PALETTE = {
     "primary":       "#1C3F5E",
     "primary_dark":  "#152E45",
@@ -272,6 +274,76 @@ def get_css():
     background-color: #E4E9F0 !important;
 }}
 
+/* ── Popover de filtros (multiselect con checkboxes) ── */
+[data-testid="stPopover"] button {{
+    background: {p['card_bg']} !important;
+    border: 1px solid {p['border']} !important;
+    border-radius: 8px !important;
+    color: {p['text']} !important;
+    font-weight: 400 !important;
+    justify-content: space-between !important;
+    min-height: 38px !important;
+    box-shadow: none !important;
+}}
+[data-testid="stPopover"] button:hover {{
+    border-color: {p['light']} !important;
+    color: {p['text']} !important;
+}}
+/* Checkboxes adentro del popover: mas compactos */
+[data-testid="stPopoverBody"] [data-testid="stCheckbox"] {{
+    margin-bottom: 2px !important;
+}}
+[data-testid="stPopoverBody"] [data-testid="stCheckbox"] label {{
+    font-size: 0.85rem !important;
+}}
+
+/* ── Tarjeta de grafico (recuadro blanco) ── */
+[class*="st-key-chartcard"] {{
+    background: {p['card_bg']} !important;
+    border: 1px solid {p['border']} !important;
+    border-radius: 8px !important;
+    padding: 12px 8px 6px 16px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+}}
+/* Titulo dentro de la tarjeta */
+.chart-title {{
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: {p['primary']};
+    margin: 0;
+    padding-top: 4px;
+    line-height: 1.4;
+}}
+/* El icono de descarga (boton tertiary) pegado al borde derecho */
+[class*="st-key-chartcard"] [data-testid="stDownloadButton"] {{
+    width: 100% !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+}}
+[class*="st-key-chartcard"] [data-testid="stDownloadButton"] button {{
+    margin-left: auto !important;
+    margin-right: 0 !important;
+    padding: 2px 2px !important;
+    min-height: 0 !important;
+}}
+
+/* ── Icono de info de los KPI en la esquina superior derecha ── */
+.kpi-card {{
+    position: relative;
+}}
+.kpi-label span[title] {{
+    position: absolute !important;
+    top: 10px;
+    right: 12px;
+    margin-left: 0 !important;
+    padding: 4px;
+    cursor: help;
+}}
+.kpi-label span[title] svg {{
+    width: 17px !important;
+    height: 17px !important;
+}}
+
 </style>
 """
 
@@ -285,7 +357,8 @@ def kpi_card(label, value, delta=None, icon="", tooltip="", delta_label="vs peri
         else:
             delta_html = '<div class="kpi-delta-neutral">— Sin variación</div>'
     else:
-        delta_html = ""
+        # sin comparacion: reserva el mismo alto que una linea de delta (invisible)
+        delta_html = '<div class="kpi-delta-neutral" style="visibility:hidden;">—</div>'
 
     info_icon = (
         f'<span title="{tooltip}" style="cursor:help;margin-left:3px;display:inline-flex;vertical-align:middle;">'
@@ -303,3 +376,28 @@ def kpi_card(label, value, delta=None, icon="", tooltip="", delta_label="vs peri
         + delta_html
         + '</div>'
     )
+
+
+def export_icon(df, filename, key, help="Descargar los datos de este gráfico (CSV)"):
+    """Icono de descarga sin caja (type=tertiary), CSV generado lazy al click.
+    Va dentro de un st.container(key='chartcard_...') para quedar en la tarjeta."""
+    st.download_button(
+        label="",
+        data=lambda: df.to_csv(index=False).encode("utf-8-sig"),
+        file_name=filename,
+        mime="text/csv",
+        icon=":material/download:",
+        type="tertiary",
+        key=key,
+        help=help,
+    )
+
+
+def chart_header(title, df, filename, key, ratio=(6, 1)):
+    """Encabezado de tarjeta: titulo a la izquierda, icono de descarga a la derecha.
+    ratio mas grande en el primer numero = icono mas pegado a la derecha (graficos anchos)."""
+    h1, h2 = st.columns(list(ratio))
+    with h1:
+        st.markdown(f"<div class='chart-title'>{title}</div>", unsafe_allow_html=True)
+    with h2:
+        export_icon(df, filename, key)

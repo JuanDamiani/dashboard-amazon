@@ -1,5 +1,7 @@
 """
 Overview — RF1
+Export por grafico (RF7). Se quito el export general de ordenes crudas
+(traia todo el dataset filtrado en cada carga -> lento).
 """
 
 from datetime import timedelta
@@ -10,28 +12,14 @@ import plotly.graph_objects as go
 import pandas as pd
 
 from utils.db import query
-from utils.downloads import download_dataframe
 from utils.filters import render_filters
-from utils.style import kpi_card, PALETTE, PLOTLY_COLORS, FONT
+from utils.style import kpi_card, export_icon, chart_header, PALETTE, PLOTLY_COLORS, FONT
 
 # ── FILTROS (solo globales, RF1) ─────────────────────────
 filters      = render_filters(extra_filters=[])
 where        = filters["where"]
 where_rating = filters["where_rating"]
 params       = filters["params"]
-
-df_export = query(f"""
-    SELECT purchase_date, category, location, device, payment_method,
-           delivery_status, final_price, rating, is_returned, seller_id
-    FROM analytics.fact_orders {where}
-    ORDER BY purchase_date DESC
-""", params)
-download_dataframe(
-    df_export,
-    "overview_ordenes_filtradas.csv",
-    "Descargar ordenes filtradas del overview",
-    "overview_export_csv",
-)
 
 # ── KPIs ─────────────────────────────────────────────────
 kpis = query(f"""
@@ -180,7 +168,9 @@ fig_trend.update_layout(
     yaxis=dict(gridcolor="#EEF2F7", title=y_label),
     hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=13), align="left"),
 )
-st.plotly_chart(fig_trend, use_container_width=True)
+with st.container(key="chartcard_trend"):
+    chart_header(f"Evolución Mensual de {'Ingresos' if metric_sel == 'Revenue' else 'Órdenes'}", df_evol, "tendencia_overview.csv", "exp_trend", ratio=(24, 1))
+    st.plotly_chart(fig_trend, use_container_width=True, config={"displayModeBar": False})
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -196,15 +186,15 @@ with col1:
     """, params)
     fig1 = px.bar(df_cat, x="pct", y="category", orientation="h", text="pct",
                  color_discrete_sequence=[PALETTE["primary_light"]],
-                 title="Ingresos por Categoría (%)",
                  custom_data=["ingresos"], labels={"pct":"% ingresos","category":""})
     fig1.update_traces(texttemplate="%{text:.1f}%", textposition="outside",
                       hovertemplate="<b>%{y}</b><br>%: %{x:.1f}%<br>Total: ₹%{customdata[0]:,.0f}<extra></extra>")
     fig1.update_layout(plot_bgcolor="white", paper_bgcolor="white", height=300,
-                      font=dict(family=FONT), margin=dict(t=40,b=20,l=10,r=50),
-                      title=dict(font=dict(color="#6B7A8D", size=13)))
+                      font=dict(family=FONT), margin=dict(t=15,b=20,l=10,r=50))
     fig1.update_xaxes(showgrid=True, gridcolor="#EEF2F7", range=[0, df_cat["pct"].max()*1.2])
-    st.plotly_chart(fig1, use_container_width=True)
+    with st.container(key="chartcard_cat"):
+        chart_header("Ingresos por Categoría (%)", df_cat, "ingresos_por_categoria.csv", "exp_cat")
+        st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
 
 with col2:
     df_ent = query(f"""
@@ -215,14 +205,16 @@ with col2:
         FROM analytics.fact_orders {where} GROUP BY delivery_status ORDER BY pct DESC
     """, params)
     fig2 = px.pie(df_ent, names="delivery_status", values="pct",
-                 color_discrete_sequence=PLOTLY_COLORS, title="Estado de Entregas",
+                 color_discrete_sequence=PLOTLY_COLORS,
                  hole=0.4, custom_data=["dias_prom","tasa_dev","ordenes"])
     fig2.update_traces(textposition="inside", textinfo="percent+label",
                       hovertemplate="<b>%{label}</b><br>%: %{value:.1f}%<br>Días: %{customdata[0]}<br>Dev: %{customdata[1]}%<extra></extra>")
     fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", height=300,
-                      font=dict(family=FONT), margin=dict(t=40,b=20,l=10,r=10),
-                      showlegend=False, title=dict(font=dict(color="#6B7A8D", size=13)))
-    st.plotly_chart(fig2, use_container_width=True)
+                      font=dict(family=FONT), margin=dict(t=15,b=20,l=10,r=10),
+                      showlegend=False)
+    with st.container(key="chartcard_ent"):
+        chart_header("Estado de Entregas", df_ent, "estado_entregas.csv", "exp_ent")
+        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
 
 with col3:
     df_pay = query(f"""
@@ -233,14 +225,16 @@ with col3:
         FROM analytics.fact_orders {where} GROUP BY payment_method ORDER BY pct DESC
     """, params)
     fig3 = px.pie(df_pay, names="payment_method", values="pct",
-                 color_discrete_sequence=PLOTLY_COLORS, title="Métodos de Pago",
+                 color_discrete_sequence=PLOTLY_COLORS,
                  hole=0.4, custom_data=["tasa_dev","ticket_prom","ordenes"])
     fig3.update_traces(textposition="inside", textinfo="percent+label",
                       hovertemplate="<b>%{label}</b><br>%: %{value:.1f}%<br>Dev: %{customdata[0]}%<br>Ticket: ₹%{customdata[1]:,.0f}<extra></extra>")
     fig3.update_layout(plot_bgcolor="white", paper_bgcolor="white", height=300,
-                      font=dict(family=FONT), margin=dict(t=40,b=20,l=10,r=10),
-                      showlegend=False, title=dict(font=dict(color="#6B7A8D", size=13)))
-    st.plotly_chart(fig3, use_container_width=True)
+                      font=dict(family=FONT), margin=dict(t=15,b=20,l=10,r=10),
+                      showlegend=False)
+    with st.container(key="chartcard_pay"):
+        chart_header("Métodos de Pago", df_pay, "metodos_pago.csv", "exp_pay")
+        st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
 
 with col4:
     df_dev = query(f"""
@@ -252,11 +246,13 @@ with col4:
     """, params)
     fig4 = px.pie(df_dev, names="device", values="pct",
                  color_discrete_sequence=[PALETTE["primary"],PALETTE["primary_light"],PALETTE["light"]],
-                 title="Ventas por Dispositivo", hole=0.4,
+                 hole=0.4,
                  custom_data=["ticket_prom","avg_rating","ordenes"])
     fig4.update_traces(textposition="inside", textinfo="percent+label",
                       hovertemplate="<b>%{label}</b><br>%: %{value:.1f}%<br>Ticket: ₹%{customdata[0]:,.0f}<br>Rating: %{customdata[1]}<extra></extra>")
     fig4.update_layout(plot_bgcolor="white", paper_bgcolor="white", height=300,
-                      font=dict(family=FONT), margin=dict(t=40,b=20,l=10,r=10),
-                      showlegend=False, title=dict(font=dict(color="#6B7A8D", size=13)))
-    st.plotly_chart(fig4, use_container_width=True)
+                      font=dict(family=FONT), margin=dict(t=15,b=20,l=10,r=10),
+                      showlegend=False)
+    with st.container(key="chartcard_dev"):
+        chart_header("Ventas por Dispositivo", df_dev, "ventas_dispositivo.csv", "exp_dev")
+        st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})

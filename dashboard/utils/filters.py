@@ -6,9 +6,9 @@ Filtros globales + locales con session_state (RF2, RF8).
 - Locales (subcategoria, marca, estado_entrega, rating) solo aplican en las
   paginas que los declaran en extra_filters (RF2: filtros propios de cada seccion).
 - Dimensiones (categoria, subcategoria, ciudad, dispositivo, metodo_pago, marca,
-  estado_entrega) son MULTISELECT: vacio = todas, varias = IN (...). (SRS)
+  estado_entrega) son MULTISELECT con CHECKBOXES dentro de un popover:
+  vacio = todas, varias = IN (...). (SRS)
 - Periodo: presets + opcion "Personalizado" con calendario (dia/mes/anio).
-  El desplegable decide cual manda, asi nunca chocan preset y calendario.
 
   extra_filters=[]   -> sin filtros locales (y sin boton "Mas filtros").
   extra_filters=None -> todos los locales.
@@ -46,7 +46,10 @@ DEFAULTS = {
 ALL_LOCAL = ["subcategoria", "marca", "estado_entrega", "rating"]
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def load_filter_options():
+    """Valores distintos para los filtros. Cacheado: no cambian salvo recarga
+    de datos (TTL 10 min). Antes corria 8 SELECT DISTINCT en CADA interaccion."""
     dr     = query("SELECT MIN(purchase_date) AS mn, MAX(purchase_date) AS mx FROM analytics.fact_orders")
     cats   = query("SELECT DISTINCT category        FROM analytics.fact_orders ORDER BY category")["category"].tolist()
     locs   = query("SELECT DISTINCT location        FROM analytics.fact_orders ORDER BY location")["location"].tolist()
@@ -74,12 +77,27 @@ def _toggle_more():
     st.session_state["more_filters_open"] = not st.session_state.get("more_filters_open", False)
 
 
-def _clean_multi(key, options):
-    """Quita de la seleccion valores que ya no existen (evita que el multiselect falle)."""
-    cur = st.session_state.get(key, [])
-    valid = [v for v in cur if v in options]
-    if valid != cur:
-        st.session_state[key] = valid
+def multiselect_popover(options, key, placeholder="Todas"):
+    """Selector multiple con CHECKBOXES dentro de un popover (en vez de chips).
+    Mantiene la misma key flt_* con la lista de seleccionados, asi el resto del
+    codigo (WHERE, params) no cambia. Altura fija -> no hay salto al filtrar."""
+    st.session_state.setdefault(key, [])
+    # limpia valores que ya no existen (p.ej. tras recargar datos)
+    sel = [v for v in st.session_state[key] if v in options]
+    n = len(sel)
+    resumen = placeholder if n == 0 else (sel[0] if n == 1 else f"{n} seleccionadas")
+
+    with st.popover(resumen, use_container_width=True):
+        new_sel = []
+        for opt in options:
+            ck_key = f"{key}__chk__{opt}"
+            if ck_key not in st.session_state:
+                st.session_state[ck_key] = opt in sel
+            if st.checkbox(opt, key=ck_key):
+                new_sel.append(opt)
+
+    st.session_state[key] = new_sel
+    return new_sel
 
 
 def _in(col, values, prefix, params):
@@ -108,56 +126,58 @@ def render_filters(extra_filters=None):
     fc = st.columns([1.7, 1.6, 1.6, 1.6, 1.6, 1.1, 0.5])
 
     with fc[0]:
-        st.caption("Período")
-        st.selectbox("Período", list(PERIODO_OPCIONES.keys()),
-                     key="flt_periodo", label_visibility="collapsed")
+        periodo_sel = st.session_state["flt_periodo"]
+        if periodo_sel == "Personalizado":
+            rango = st.session_state.get("flt_fecha_rango")
+            if isinstance(rango, (tuple, list)) and len(rango) == 2:
+                cap = f"Período · {rango[0].strftime('%d/%m/%y')} – {rango[1].strftime('%d/%m/%y')}"
+            else:
+                cap = "Período · Personalizado"
+            st.caption(cap)
+            ps, pp = st.columns([4, 1])
+            with ps:
+                st.selectbox("Período", list(PERIODO_OPCIONES.keys()),
+                             key="flt_periodo", label_visibility="collapsed")
+            with pp:
+                with st.popover("📅", use_container_width=True):
+                    st.caption("Rango de fechas")
+                    st.date_input(
+                        "Rango", value=(min_date, max_date),
+                        min_value=min_date, max_value=max_date,
+                        key="flt_fecha_rango", label_visibility="collapsed",
+                        format="DD/MM/YYYY",
+                    )
+        else:
+            st.caption("Período")
+            st.selectbox("Período", list(PERIODO_OPCIONES.keys()),
+                         key="flt_periodo", label_visibility="collapsed")
 
     with fc[1]:
         st.caption("Categoría")
-        _clean_multi("flt_categoria", cats)
-        st.multiselect("Categoría", cats, key="flt_categoria",
-                       placeholder="Todas", label_visibility="collapsed")
+        multiselect_popover(cats, "flt_categoria", "Todas")
 
     with fc[2]:
         st.caption("Ciudad")
-        _clean_multi("flt_ciudad", locs)
-        st.multiselect("Ciudad", locs, key="flt_ciudad",
-                       placeholder="Todas", label_visibility="collapsed")
+        multiselect_popover(locs, "flt_ciudad", "Todas")
 
     with fc[3]:
         st.caption("Dispositivo")
-        _clean_multi("flt_dispositivo", devs)
-        st.multiselect("Dispositivo", devs, key="flt_dispositivo",
-                       placeholder="Todos", label_visibility="collapsed")
+        multiselect_popover(devs, "flt_dispositivo", "Todos")
 
     with fc[4]:
         st.caption("Método de pago")
-        _clean_multi("flt_metodo_pago", pays)
-        st.multiselect("Método de pago", pays, key="flt_metodo_pago",
-                       placeholder="Todos", label_visibility="collapsed")
+        multiselect_popover(pays, "flt_metodo_pago", "Todos")
 
     with fc[5]:
-        st.caption(" ")
+        st.caption(" ")
         if extra:
             st.button("🎛️ Más filtros", key="_btn_more",
                       on_click=_toggle_more, use_container_width=True)
 
     with fc[6]:
-        st.caption(" ")
+        st.caption(" ")
         st.button("🗑️", help="Limpiar filtros", key="_btn_clear",
                   on_click=_clear_filters)
-
-    # ── Calendario (solo si Período = Personalizado) ────────
-    if st.session_state["flt_periodo"] == "Personalizado":
-        dc = st.columns([2.3, 4.7])
-        with dc[0]:
-            st.caption("Rango de fechas")
-            st.date_input(
-                "Rango", value=(min_date, max_date),
-                min_value=min_date, max_value=max_date,
-                key="flt_fecha_rango", label_visibility="collapsed",
-                format="DD/MM/YYYY",
-            )
 
     # ── Fila de filtros locales ─────────────────────────────
     if extra and st.session_state.get("more_filters_open", False):
@@ -166,19 +186,13 @@ def render_filters(extra_filters=None):
             with mc[i]:
                 if filtro == "subcategoria":
                     st.caption("Subcategoría")
-                    _clean_multi("flt_subcategoria", subs)
-                    st.multiselect("Subcategoría", subs, key="flt_subcategoria",
-                                   placeholder="Todas", label_visibility="collapsed")
+                    multiselect_popover(subs, "flt_subcategoria", "Todas")
                 elif filtro == "marca":
                     st.caption("Marca")
-                    _clean_multi("flt_marca", brands)
-                    st.multiselect("Marca", brands, key="flt_marca",
-                                   placeholder="Todas", label_visibility="collapsed")
+                    multiselect_popover(brands, "flt_marca", "Todas")
                 elif filtro == "estado_entrega":
                     st.caption("Estado de entrega")
-                    _clean_multi("flt_estado_entrega", stats)
-                    st.multiselect("Estado", stats, key="flt_estado_entrega",
-                                   placeholder="Todos", label_visibility="collapsed")
+                    multiselect_popover(stats, "flt_estado_entrega", "Todos")
                 elif filtro == "rating":
                     st.caption("Rango de rating")
                     st.slider("Rating", 1.0, 5.0, step=0.5,

@@ -74,8 +74,8 @@ pg = st.navigation(
 )
 current = pg.title
 
-# ── Header: logo + pestañas (se dibuja UNA vez, en todas las paginas) ──
-header_col, tabs_col = st.columns([1, 5])
+# ── Header: logo + pestañas + cerrar sesion (se dibuja UNA vez, en todas las paginas) ──
+header_col, tabs_col, logout_col = st.columns([1, 5, 1.1])
 
 with header_col:
     st.markdown(
@@ -96,8 +96,9 @@ with tabs_col:
     if selected != current:
         st.switch_page(PAGES[selected])
 
-logout_col, _ = st.columns([1, 7])
 with logout_col:
+    # pequeño empuje para alinear el boton con las pestañas
+    st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
     st.button("Cerrar sesion", on_click=_logout, use_container_width=True)
 
 st.markdown('<hr style="margin:0 0 8px 0;border-color:#E4E9F0;">',
