@@ -26,19 +26,16 @@ def _check_credentials(username, password):
 def _login():
     st.markdown(
         """
-        <div style="max-width:420px;margin:56px auto 18px auto;">
+        <div style="max-width:420px;margin:56px auto 18px auto;padding-left:15px;">
             <div style="font-size:1.4rem;font-weight:700;color:#1C3F5E;">Amazon Analytics</div>
             <div style="font-size:0.9rem;color:#6B7A8D;margin-top:4px;">Acceso al dashboard</div>
         </div>
         """,
-        unsafe_allow_html=True,
-    )
-    with st.form("login_form"):
-        username = st.text_input("Usuario")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Ingresar", use_container_width=True)
-
-    if submitted:
+     unsafe_allow_html=True,
+)
+    username = st.text_input("Usuario", key="login_user")
+    password = st.text_input("Password", type="password", key="login_pass")
+    if st.button("Ingresar", use_container_width=True, type="primary"):
         if _check_credentials(username, password):
             st.session_state["authenticated"] = True
             st.rerun()

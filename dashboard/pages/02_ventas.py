@@ -11,27 +11,14 @@ from plotly.subplots import make_subplots
 import pandas as pd
 
 from utils.db import query
-from utils.downloads import download_dataframe
 from utils.filters import render_filters
-from utils.style import kpi_card, PALETTE, FONT
+from utils.style import kpi_card, export_icon, chart_header, PALETTE, FONT
 
 # ── FILTROS: globales + locales (subcategoria, marca) — RF3 ──
 filters      = render_filters(extra_filters=["subcategoria", "marca"])
 where_ventas = filters["where"]
 params       = filters["params"]
 
-df_export = query(f"""
-    SELECT purchase_date, category, subcategory, brand, device,
-           payment_method, price, discount, final_price, rating, is_returned
-    FROM analytics.fact_orders {where_ventas}
-    ORDER BY purchase_date DESC
-""", params)
-download_dataframe(
-    df_export,
-    "ventas_ordenes_filtradas.csv",
-    "Descargar ordenes filtradas de ventas",
-    "ventas_export_csv",
-)
 
 # ── KPIs RF3 ─────────────────────────────────────────────
 kpis_v = query(f"""
@@ -122,7 +109,6 @@ fig.add_trace(go.Scatter(
     line=dict(color=PALETTE["accent"], width=2.5), marker=dict(size=6),
 ), secondary_y=True)
 fig.update_layout(
-    title=dict(text="Evolución Mensual de Ventas", font=dict(color="#6B7A8D", size=13)),
     plot_bgcolor="white", paper_bgcolor="white",
     font=dict(family=FONT, color=PALETTE["text"]),
     legend=dict(orientation="h", y=1.1, x=0),
@@ -132,7 +118,9 @@ fig.update_layout(
 fig.update_yaxes(title_text="Ingresos (INR)", secondary_y=False, gridcolor="#EEF2F7")
 fig.update_yaxes(title_text="Unidades vendidas", secondary_y=True, showgrid=False)
 fig.update_xaxes(gridcolor="#EEF2F7")
-st.plotly_chart(fig, use_container_width=True)
+with st.container(key="chartcard_v_evol"):
+    chart_header("Evolución Mensual de Ventas", df_evol, "evolucion_ventas.csv", "exp_v_evol", ratio=(24, 1), info="Ingresos (suma de los precios finales) y unidades vendidas (cantidad de órdenes) por mes. Sirve para ver la tendencia del negocio en el tiempo y detectar estacionalidad o crecimiento.")
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -161,32 +149,32 @@ with tab1:
         fig_c = px.bar(df_cat, x="category", y="ingresos",
                        color_discrete_sequence=[PALETTE["primary_light"]],
                        text="ingresos_label",
-                       title="Ingresos por Categoría",
                        labels={"ingresos": "Ingresos (INR)", "category": ""})
         fig_c.update_traces(textposition="outside")
         fig_c.update_layout(
             plot_bgcolor="white", paper_bgcolor="white", height=320,
             font=dict(family=FONT, color=PALETTE["text"]),
-            title=dict(font=dict(color="#6B7A8D", size=13)),
-            margin=dict(t=40, b=20, l=10, r=10),
+            margin=dict(t=15, b=20, l=10, r=10),
         )
         fig_c.update_yaxes(gridcolor="#EEF2F7")
-        st.plotly_chart(fig_c, use_container_width=True)
+        with st.container(key="chartcard_v_cat"):
+            chart_header("Ingresos por Categoría", df_cat, "ingresos_categoria_ventas.csv", "exp_v_cat", ratio=(18, 1), info="Suma de los ingresos (precio final) agrupada por categoría. Muestra qué categorías concentran la mayor facturación.")
+            st.plotly_chart(fig_c, use_container_width=True, config={"displayModeBar": False})
     with col2:
         fig_d = px.bar(df_cat, x="category", y="descuento_prom",
                        color_discrete_sequence=[PALETTE["accent"]],
                        text="descuento_prom",
-                       title="Descuento Promedio por Categoría (%)",
                        labels={"descuento_prom": "Descuento (%)", "category": ""})
         fig_d.update_traces(texttemplate="%{text:.0f}%", textposition="outside")
         fig_d.update_layout(
             plot_bgcolor="white", paper_bgcolor="white", height=320,
             font=dict(family=FONT, color=PALETTE["text"]),
-            title=dict(font=dict(color="#6B7A8D", size=13)),
-            margin=dict(t=40, b=20, l=10, r=10),
+            margin=dict(t=15, b=20, l=10, r=10),
         )
         fig_d.update_yaxes(gridcolor="#EEF2F7")
-        st.plotly_chart(fig_d, use_container_width=True)
+        with st.container(key="chartcard_v_desc"):
+            chart_header("Descuento Promedio por Categoría (%)", df_cat, "descuento_categoria.csv", "exp_v_desc", ratio=(18, 1), info="Promedio del porcentaje de descuento aplicado, por categoría. Indica en qué categorías se resigna más margen para vender.")
+            st.plotly_chart(fig_d, use_container_width=True, config={"displayModeBar": False})
 
     # Precio original vs precio final
     st.markdown("<br>", unsafe_allow_html=True)
@@ -216,7 +204,6 @@ with tab1:
         textposition="outside",
     ))
     fig_precios.update_layout(
-        title=dict(text="Precio Original vs Precio Final por Categoría", font=dict(color="#6B7A8D", size=13)),
         barmode="group",
         plot_bgcolor="white", paper_bgcolor="white", height=340,
         font=dict(family=FONT, color=PALETTE["text"]),
@@ -226,7 +213,9 @@ with tab1:
     )
     fig_precios.update_yaxes(gridcolor="#EEF2F7", title="Precio promedio (INR)")
     fig_precios.update_xaxes(title="Categoría")
-    st.plotly_chart(fig_precios, use_container_width=True)
+    with st.container(key="chartcard_v_prec"):
+        chart_header("Precio Original vs Precio Final por Categoría", df_precios, "precio_original_vs_final.csv", "exp_v_prec", ratio=(24, 1), info="Promedio del precio de lista (original) frente al precio efectivamente pagado (final), por categoría. La brecha entre ambos es el descuento promedio aplicado.")
+        st.plotly_chart(fig_precios, use_container_width=True, config={"displayModeBar": False})
 
 with tab2:
     df_sub = query(f"""
@@ -290,7 +279,9 @@ with tab2:
         .hide(axis="index")
     )
 
-    st.dataframe(styled, use_container_width=True, height=480)
+    with st.container(key="chartcard_v_sub"):
+        chart_header("Detalle por Subcategoría (Top 20)", df_sub, "detalle_subcategorias.csv", "exp_v_sub", ratio=(24, 1), info="Métricas por subcategoría: unidades, ingresos, precio promedio, descuento, rating y porcentaje de devolución. Top 20 ordenado por ingresos.")
+        st.dataframe(styled, use_container_width=True, height=480)
 
 with tab3:
     df_brand = query(f"""
@@ -314,7 +305,6 @@ with tab3:
     fig_brand = px.bar(df_brand, x="ingresos", y="brand", orientation="h",
                        color_discrete_sequence=[PALETTE["primary_light"]],
                        text="label",
-                       title="Top 20 Marcas por Ingresos",
                        labels={"ingresos": "Ingresos (INR)", "brand": ""},
                        custom_data=["precio_promedio", "descuento_prom", "rating_prom", "unidades_vendidas"])
     fig_brand.update_traces(
@@ -324,12 +314,13 @@ with tab3:
     fig_brand.update_layout(
         plot_bgcolor="white", paper_bgcolor="white", height=520,
         font=dict(family=FONT, color=PALETTE["text"]),
-        title=dict(font=dict(color="#6B7A8D", size=13)),
-        margin=dict(t=40, b=20, l=10, r=90),
+        margin=dict(t=15, b=20, l=10, r=90),
         hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=12)),
     )
     fig_brand.update_xaxes(gridcolor="#EEF2F7", range=[min_ing, max_ing])
-    st.plotly_chart(fig_brand, use_container_width=True)
+    with st.container(key="chartcard_v_brand"):
+        chart_header("Top 20 Marcas por Ingresos", df_brand, "top_marcas.csv", "exp_v_brand", ratio=(24, 1), info="Ingresos totales (suma de precios finales) por marca, top 20. Identifica las marcas que más facturan en el período seleccionado.")
+        st.plotly_chart(fig_brand, use_container_width=True, config={"displayModeBar": False})
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -377,7 +368,6 @@ fig_corr.add_trace(go.Scatter(
     hoverinfo="skip",
 ))
 fig_corr.update_layout(
-    title=dict(text="Correlación: Descuento Promedio → Volumen de Órdenes", font=dict(color="#6B7A8D", size=13)),
     plot_bgcolor="white", paper_bgcolor="white", height=400,
     font=dict(family=FONT, color=PALETTE["text"]),
     margin=dict(t=50, b=50, l=10, r=60),
@@ -388,10 +378,6 @@ fig_corr.update_layout(
     yaxis2=dict(title="Descuento %", overlaying="y", side="right", showgrid=False,
                 tickformat=".0f", ticksuffix="%"),
 )
-st.plotly_chart(fig_corr, use_container_width=True)
-st.markdown(
-    '<div style="font-size:0.72rem;color:#9BAAB8;margin-top:-12px;">'
-    'Cuando el descuento promedio sube (línea naranja), el volumen de órdenes suele aumentar en los meses siguientes.'
-    '</div>',
-    unsafe_allow_html=True,
-)
+with st.container(key="chartcard_v_corr"):
+    chart_header("Relación entre Nivel de Descuento y Volumen de Compra", df_corr, "correlacion_descuento_ordenes.csv", "exp_v_corr", ratio=(24, 1), info="Compara el descuento promedio mensual con la cantidad de órdenes. Ayuda a ver si subir los descuentos impulsa el volumen de ventas en los meses siguientes.")
+    st.plotly_chart(fig_corr, use_container_width=True, config={"displayModeBar": False})

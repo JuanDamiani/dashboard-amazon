@@ -40,7 +40,6 @@ DEFAULTS = {
     "flt_marca":          [],
     "flt_estado_entrega": [],
     "flt_rating":         (1.0, 5.0),
-    "more_filters_open":  False,
 }
 
 ALL_LOCAL = ["subcategoria", "marca", "estado_entrega", "rating"]
@@ -70,11 +69,18 @@ def _clear_filters():
     for k in list(st.session_state.keys()):
         if k.startswith("flt_"):
             del st.session_state[k]
-    st.session_state["more_filters_open"] = False
 
 
-def _toggle_more():
-    st.session_state["more_filters_open"] = not st.session_state.get("more_filters_open", False)
+def _checkbox_multi(options, key, sel):
+    """Renderiza checkboxes (sin popover) y devuelve la lista seleccionada."""
+    new_sel = []
+    for opt in options:
+        ck_key = f"{key}__chk__{opt}"
+        if ck_key not in st.session_state:
+            st.session_state[ck_key] = opt in sel
+        if st.checkbox(opt, key=ck_key):
+            new_sel.append(opt)
+    return new_sel
 
 
 def multiselect_popover(options, key, placeholder="Todas"):
@@ -82,22 +88,21 @@ def multiselect_popover(options, key, placeholder="Todas"):
     Mantiene la misma key flt_* con la lista de seleccionados, asi el resto del
     codigo (WHERE, params) no cambia. Altura fija -> no hay salto al filtrar."""
     st.session_state.setdefault(key, [])
-    # limpia valores que ya no existen (p.ej. tras recargar datos)
-    sel = [v for v in st.session_state[key] if v in options]
+    sel = [v for v in st.session_state[key] if v in options]  # limpia stale
     n = len(sel)
     resumen = placeholder if n == 0 else (sel[0] if n == 1 else f"{n} seleccionadas")
-
     with st.popover(resumen, use_container_width=True):
-        new_sel = []
-        for opt in options:
-            ck_key = f"{key}__chk__{opt}"
-            if ck_key not in st.session_state:
-                st.session_state[ck_key] = opt in sel
-            if st.checkbox(opt, key=ck_key):
-                new_sel.append(opt)
-
+        new_sel = _checkbox_multi(options, key, sel)
     st.session_state[key] = new_sel
     return new_sel
+
+
+def _local_multi(label, options, key):
+    """Filtro multiple INLINE (para usar adentro del popover 'Mas filtros')."""
+    st.session_state.setdefault(key, [])
+    sel = [v for v in st.session_state[key] if v in options]
+    st.caption(label)
+    st.session_state[key] = _checkbox_multi(options, key, sel)
 
 
 def _in(col, values, prefix, params):
@@ -169,34 +174,46 @@ def render_filters(extra_filters=None):
         multiselect_popover(pays, "flt_metodo_pago", "Todos")
 
     with fc[5]:
-        st.caption(" ")
+        st.caption(" ")
+        st.markdown("<div style='margin-top: 22px'></div>", unsafe_allow_html=True)
+
         if extra:
-            st.button("🎛️ Más filtros", key="_btn_more",
-                      on_click=_toggle_more, use_container_width=True)
+            with st.popover(
+                "Más filtros",
+                icon=":material/filter_alt:",
+                use_container_width=True
+            ):
+                pcols = st.columns(len(extra))
+                for pcol, filtro in zip(pcols, extra):
+                    with pcol:
+                        if filtro == "subcategoria":
+                            _local_multi("Subcategoría", subs, "flt_subcategoria")
+                        elif filtro == "marca":
+                            _local_multi("Marca", brands, "flt_marca")
+                        elif filtro == "estado_entrega":
+                            _local_multi("Estado de entrega", stats, "flt_estado_entrega")
+                        elif filtro == "rating":
+                            st.caption("Rango de rating")
+                            st.slider(
+                                "Rating",
+                                1.0,
+                                5.0,
+                                step=0.5,
+                                key="flt_rating",
+                                label_visibility="collapsed"
+                            )
 
     with fc[6]:
-        st.caption(" ")
-        st.button("🗑️", help="Limpiar filtros", key="_btn_clear",
-                  on_click=_clear_filters)
+        st.caption(" ")
+        st.markdown("<div style='margin-top: 22px'></div>", unsafe_allow_html=True)
 
-    # ── Fila de filtros locales ─────────────────────────────
-    if extra and st.session_state.get("more_filters_open", False):
-        mc = st.columns(len(extra))
-        for i, filtro in enumerate(extra):
-            with mc[i]:
-                if filtro == "subcategoria":
-                    st.caption("Subcategoría")
-                    multiselect_popover(subs, "flt_subcategoria", "Todas")
-                elif filtro == "marca":
-                    st.caption("Marca")
-                    multiselect_popover(brands, "flt_marca", "Todas")
-                elif filtro == "estado_entrega":
-                    st.caption("Estado de entrega")
-                    multiselect_popover(stats, "flt_estado_entrega", "Todos")
-                elif filtro == "rating":
-                    st.caption("Rango de rating")
-                    st.slider("Rating", 1.0, 5.0, step=0.5,
-                              key="flt_rating", label_visibility="collapsed")
+        st.button(
+            "",
+            icon=":material/filter_alt_off:",
+            help="Limpiar todos los filtros",
+            key="_btn_clear",
+            on_click=_clear_filters
+        )
 
     # ── Indicador de filtros activos (alto fijo, sin salto) ─
     n_activos = sum([

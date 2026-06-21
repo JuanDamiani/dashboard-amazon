@@ -290,6 +290,9 @@ def get_css():
     color: {p['text']} !important;
 }}
 /* Checkboxes adentro del popover: mas compactos */
+[data-testid="stPopoverBody"] {{
+    min-width: 360px;
+}}
 [data-testid="stPopoverBody"] [data-testid="stCheckbox"] {{
     margin-bottom: 2px !important;
 }}
@@ -348,14 +351,16 @@ def get_css():
 """
 
 
-def kpi_card(label, value, delta=None, icon="", tooltip="", delta_label="vs periodo anterior"):
+def kpi_card(label, value, delta=None, icon="", tooltip="", delta_label="vs periodo anterior", invert=False):
     if delta is not None:
-        if delta > 0:
-            delta_html = f'<div class="kpi-delta-positive">▲ {delta:+.1f}% {delta_label}</div>'
-        elif delta < 0:
-            delta_html = f'<div class="kpi-delta-negative">▼ {delta:.1f}% {delta_label}</div>'
-        else:
+        if delta == 0:
             delta_html = '<div class="kpi-delta-neutral">— Sin variación</div>'
+        else:
+            # invert=True: subir es malo (devoluciones, demoras) -> el color va al reves
+            is_good = (delta < 0) if invert else (delta > 0)
+            arrow = "▲" if delta > 0 else "▼"
+            cls = "kpi-delta-positive" if is_good else "kpi-delta-negative"
+            delta_html = f'<div class="{cls}">{arrow} {delta:+.1f}% {delta_label}</div>'
     else:
         # sin comparacion: reserva el mismo alto que una linea de delta (invisible)
         delta_html = '<div class="kpi-delta-neutral" style="visibility:hidden;">—</div>'
@@ -393,11 +398,26 @@ def export_icon(df, filename, key, help="Descargar los datos de este gráfico (C
     )
 
 
-def chart_header(title, df, filename, key, ratio=(6, 1)):
-    """Encabezado de tarjeta: titulo a la izquierda, icono de descarga a la derecha.
-    ratio mas grande en el primer numero = icono mas pegado a la derecha (graficos anchos)."""
+def chart_header(title, df, filename, key, ratio=(6, 1), info=None):
+    """Encabezado de tarjeta: titulo (+ icono de info opcional) a la izquierda,
+    icono de descarga a la derecha. ratio mas grande = icono mas pegado a la derecha.
+    info: texto que aparece al pasar el cursor sobre el icono (i) — formula + interpretacion (RF9)."""
     h1, h2 = st.columns(list(ratio))
     with h1:
-        st.markdown(f"<div class='chart-title'>{title}</div>", unsafe_allow_html=True)
+        if info:
+            info_esc = info.replace('"', "&quot;")
+            info_icon = (
+                f'<span title="{info_esc}" style="cursor:help;margin-left:6px;'
+                'display:inline-flex;vertical-align:middle;">'
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" '
+                'stroke="#9BAAB8" stroke-width="2">'
+                '<circle cx="12" cy="12" r="10"/>'
+                '<line x1="12" y1="16" x2="12" y2="12"/>'
+                '<line x1="12" y1="8" x2="12.01" y2="8"/>'
+                '</svg></span>'
+            )
+        else:
+            info_icon = ""
+        st.markdown(f"<div class='chart-title'>{title}{info_icon}</div>", unsafe_allow_html=True)
     with h2:
         export_icon(df, filename, key)
