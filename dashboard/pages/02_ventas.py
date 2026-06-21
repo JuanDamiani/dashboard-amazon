@@ -2,6 +2,8 @@
 Pagina de Analisis de Ventas — RF3
 """
 
+from datetime import timedelta
+
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
@@ -9,12 +11,27 @@ from plotly.subplots import make_subplots
 import pandas as pd
 
 from utils.db import query
+from utils.downloads import download_dataframe
 from utils.filters import render_filters
 from utils.style import kpi_card, PALETTE, FONT
 
 # ── FILTROS: globales + locales (subcategoria, marca) — RF3 ──
 filters      = render_filters(extra_filters=["subcategoria", "marca"])
 where_ventas = filters["where"]
+params       = filters["params"]
+
+df_export = query(f"""
+    SELECT purchase_date, category, subcategory, brand, device,
+           payment_method, price, discount, final_price, rating, is_returned
+    FROM analytics.fact_orders {where_ventas}
+    ORDER BY purchase_date DESC
+""", params)
+download_dataframe(
+    df_export,
+    "ventas_ordenes_filtradas.csv",
+    "Descargar ordenes filtradas de ventas",
+    "ventas_export_csv",
+)
 
 # ── KPIs RF3 ─────────────────────────────────────────────
 kpis_v = query(f"""
@@ -24,19 +41,40 @@ kpis_v = query(f"""
         ROUND(AVG(final_price)::numeric, 0)    AS avg_ticket,
         ROUND(AVG(discount)::numeric, 1)        AS avg_discount
     FROM analytics.fact_orders {where_ventas}
-""")
+""", params)
 
-var_v = query("""
-    SELECT total_revenue_pct_change, total_orders_pct_change, avg_ticket_pct_change
-    FROM analytics.mart_period_variation
-    ORDER BY period_month DESC LIMIT 1
-""")
+def previous_period_params(filters, current_params):
+    fecha_inicio = filters["fecha_inicio"]
+    fecha_fin = filters["fecha_fin"]
+    period_days = max((fecha_fin - fecha_inicio).days, 0)
+    prev_fin = fecha_inicio - timedelta(days=1)
+    prev_inicio = prev_fin - timedelta(days=period_days)
+    prev_params = dict(current_params)
+    prev_params["fecha_inicio"] = prev_inicio
+    prev_params["fecha_fin"] = prev_fin
+    return prev_params
 
-def get_delta(df, col):
+
+prev_params = previous_period_params(filters, params)
+prev_kpis_v = query(f"""
+    SELECT
+        ROUND(SUM(final_price)::numeric, 0)    AS total_revenue,
+        COUNT(*)                                AS total_orders,
+        ROUND(AVG(final_price)::numeric, 0)    AS avg_ticket,
+        ROUND(AVG(discount)::numeric, 1)        AS avg_discount
+    FROM analytics.fact_orders {where_ventas}
+""", prev_params)
+
+
+def pct_delta(current_df, previous_df, col):
     try:
-        v = df[col].iloc[0]
-        return float(v) if v is not None else None
-    except: return None
+        current = current_df[col].iloc[0]
+        previous = previous_df[col].iloc[0]
+        if pd.isna(current) or pd.isna(previous) or float(previous) == 0:
+            return None
+        return ((float(current) - float(previous)) / abs(float(previous))) * 100
+    except Exception:
+        return None
 
 def fmt_rev(v):
     if v >= 1_000_000_000: return f"₹{v/1_000_000_000:.1f}B"
@@ -54,9 +92,9 @@ ICON_TAG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="
 ICON_PCT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5" stroke-linecap="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>'
 
 c1, c2, c3, c4 = st.columns(4)
-c1.markdown(kpi_card("Ingresos Totales",  fmt_rev(kpis_v["total_revenue"].iloc[0]), get_delta(var_v, "total_revenue_pct_change"), ICON_REV, "Suma de ingresos del período seleccionado en INR."), unsafe_allow_html=True)
-c2.markdown(kpi_card("Unidades Vendidas", fmt_num(kpis_v["total_orders"].iloc[0]),  get_delta(var_v, "total_orders_pct_change"),  ICON_BOX, "Total de órdenes procesadas. Cada fila = 1 orden = 1 unidad vendida."), unsafe_allow_html=True)
-c3.markdown(kpi_card("Precio Promedio",   fmt_rev(kpis_v["avg_ticket"].iloc[0]),    get_delta(var_v, "avg_ticket_pct_change"),    ICON_TAG, "Precio final promedio por orden en INR."), unsafe_allow_html=True)
+c1.markdown(kpi_card("Ingresos Totales",  fmt_rev(kpis_v["total_revenue"].iloc[0]), pct_delta(kpis_v, prev_kpis_v, "total_revenue"), ICON_REV, "Suma de ingresos del período seleccionado en INR."), unsafe_allow_html=True)
+c2.markdown(kpi_card("Unidades Vendidas", fmt_num(kpis_v["total_orders"].iloc[0]),  pct_delta(kpis_v, prev_kpis_v, "total_orders"),  ICON_BOX, "Total de órdenes procesadas. Cada fila = 1 orden = 1 unidad vendida."), unsafe_allow_html=True)
+c3.markdown(kpi_card("Precio Promedio",   fmt_rev(kpis_v["avg_ticket"].iloc[0]),    pct_delta(kpis_v, prev_kpis_v, "avg_ticket"),    ICON_TAG, "Precio final promedio por orden en INR."), unsafe_allow_html=True)
 c4.markdown(kpi_card("Descuento Prom.",   f'{kpis_v["avg_discount"].iloc[0]}%',     None,                                         ICON_PCT, "Porcentaje de descuento promedio aplicado en el período."), unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -70,7 +108,7 @@ df_evol = query(f"""
            ROUND(AVG(discount)::numeric, 1) AS descuento_promedio
     FROM analytics.fact_orders {where_ventas}
     GROUP BY 1 ORDER BY mes
-""")
+""", params)
 df_evol["mes"] = pd.to_datetime(df_evol["mes"]).dt.strftime("%b %Y")
 
 fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -112,7 +150,7 @@ with tab1:
                ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100, 1) AS tasa_dev
         FROM analytics.fact_orders {where_ventas}
         GROUP BY category ORDER BY ingresos DESC
-    """)
+    """, params)
     col1, col2 = st.columns(2)
     with col1:
         def fmt_ingresos(v):
@@ -159,7 +197,7 @@ with tab1:
                ROUND(AVG(discount)::numeric, 0) AS descuento_prom
         FROM analytics.fact_orders {where_ventas}
         GROUP BY category ORDER BY precio_original DESC
-    """)
+    """, params)
     fig_precios = go.Figure()
     fig_precios.add_trace(go.Bar(
         name="Precio original",
@@ -201,7 +239,7 @@ with tab2:
                ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)*100, 1) AS tasa_dev
         FROM analytics.fact_orders {where_ventas}
         GROUP BY subcategory, category ORDER BY ingresos DESC LIMIT 20
-    """)
+    """, params)
 
     def fmt_m(v):
         if v >= 1_000_000_000: return f"₹{v/1_000_000_000:.1f}B"
@@ -264,7 +302,7 @@ with tab3:
                ROUND(AVG(rating)::numeric, 2) AS rating_prom
         FROM analytics.fact_orders {where_ventas}
         GROUP BY brand ORDER BY ingresos DESC LIMIT 20
-    """)
+    """, params)
     df_brand["label"] = df_brand["ingresos"].apply(lambda v:
         f"₹{v/1_000_000_000:.1f}B" if v >= 1_000_000_000 else
         f"₹{v/1_000_000:.0f}M" if v >= 1_000_000 else f"₹{v:,.0f}"
@@ -303,7 +341,7 @@ df_corr = query(f"""
     FROM analytics.fact_orders {where_ventas}
     AND DATE_TRUNC('month', purchase_date) < DATE_TRUNC('month', CURRENT_DATE)
     GROUP BY 1 ORDER BY mes
-""")
+""", params)
 df_corr["mes_label"] = pd.to_datetime(df_corr["mes"]).dt.strftime("%b %Y")
 
 def fmt_ord(v):

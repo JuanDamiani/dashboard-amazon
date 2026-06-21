@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import pandas as pd
 
 from utils.db import query
+from utils.downloads import download_dataframe
 from utils.filters import render_filters
 from utils.style import kpi_card, PALETTE, FONT
 
@@ -19,6 +20,20 @@ STATUS_DELAYED = "Delayed"
 # ── FILTROS: globales + local (estado_entrega) — RF4 ─────
 filters   = render_filters(extra_filters=["estado_entrega"])
 where_log = filters["where"]
+params    = filters["params"]
+
+df_export = query(f"""
+    SELECT purchase_date, location, delivery_status, shipping_time_days,
+           payment_method, category, is_returned, final_price
+    FROM analytics.fact_orders {where_log}
+    ORDER BY purchase_date DESC
+""", params)
+download_dataframe(
+    df_export,
+    "logistica_ordenes_filtradas.csv",
+    "Descargar ordenes filtradas de logistica",
+    "logistica_export_csv",
+)
 
 # ── KPIs (todos filtrados, una sola query) ───────────────
 kpis_log = query(f"""
@@ -28,7 +43,7 @@ kpis_log = query(f"""
         ROUND(AVG(CASE WHEN delivery_status = '{STATUS_ON_TIME}' THEN 1.0 ELSE 0.0 END)::numeric * 100, 1) AS pct_on_time,
         ROUND(AVG(CASE WHEN delivery_status = '{STATUS_DELAYED}' THEN 1.0 ELSE 0.0 END)::numeric * 100, 1) AS pct_delayed
     FROM analytics.fact_orders {where_log}
-""")
+""", params)
 avg_ship    = kpis_log["avg_ship"].iloc[0]
 ret_rate    = kpis_log["ret_rate"].iloc[0]
 pct_on_time = kpis_log["pct_on_time"].iloc[0]
@@ -58,7 +73,7 @@ with col1:
                ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100, 1) AS tasa_dev
         FROM analytics.fact_orders {where_log}
         GROUP BY delivery_status ORDER BY ordenes DESC
-    """)
+    """, params)
     fig1 = px.bar(df_est, x="pct", y="delivery_status", orientation="h",
                   text="pct", color_discrete_sequence=[PALETTE["primary"]],
                   title="Distribución por Estado de Entrega (%)",
@@ -86,7 +101,7 @@ with col2:
                COUNT(*) AS ordenes
         FROM analytics.fact_orders {where_log}
         GROUP BY location ORDER BY dias_prom DESC
-    """)
+    """, params)
     fig2 = px.bar(df_city, x="dias_prom", y="location", orientation="h",
                   text="dias_prom", color_discrete_sequence=[PALETTE["primary_light"]],
                   title="Tiempo Promedio de Envío por Ciudad (días)",
@@ -118,7 +133,7 @@ with col3:
                COUNT(*) AS ordenes
         FROM analytics.fact_orders {where_log}
         GROUP BY category ORDER BY tasa_dev DESC
-    """)
+    """, params)
     fig3 = px.bar(df_ret_cat, x="tasa_dev", y="category", orientation="h",
                   text="tasa_dev", color_discrete_sequence=[PALETTE["danger"]],
                   title="Tasa de Devolución por Categoría (%)",
@@ -145,7 +160,7 @@ with col4:
                COUNT(*) AS ordenes
         FROM analytics.fact_orders {where_log}
         GROUP BY location ORDER BY tasa_dev DESC
-    """)
+    """, params)
     fig4 = px.bar(df_ret_city, x="tasa_dev", y="location", orientation="h",
                   text="tasa_dev", color_discrete_sequence=[PALETTE["danger"]],
                   title="Tasa de Devolución por Ciudad (%)",
@@ -178,7 +193,7 @@ with col5:
         FROM analytics.fact_orders {where_log}
         AND DATE_TRUNC('month', purchase_date) < DATE_TRUNC('month', CURRENT_DATE)
         GROUP BY 1 ORDER BY mes
-    """)
+    """, params)
     df_trend["mes_label"] = pd.to_datetime(df_trend["mes"]).dt.strftime("%b %Y")
     fig5 = px.line(df_trend, x="mes_label", y="pct_demorados", markers=True,
                    text=df_trend["pct_demorados"].apply(lambda v: f"{v:.1f}%"),
@@ -209,7 +224,7 @@ with col6:
                ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100, 1) AS return_rate
         FROM analytics.fact_orders {where_log}
         GROUP BY shipping_time_days ORDER BY shipping_time_days
-    """)
+    """, params)
     fig6 = go.Figure()
     fig6.add_trace(go.Scatter(
         x=df_dvr["shipping_time_days"], y=df_dvr["return_rate"],
@@ -242,7 +257,7 @@ df_map = query(f"""
            COUNT(*) AS ordenes
     FROM analytics.fact_orders {where_log}
     GROUP BY location
-""")
+""", params)
 
 # Coordenadas de ciudades indias
 coords = {
@@ -304,7 +319,7 @@ df_pay_ret = query(f"""
            ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100, 1) AS return_rate
     FROM analytics.fact_orders {where_log}
     GROUP BY payment_method ORDER BY return_rate DESC
-""")
+""", params)
 fig7 = px.bar(df_pay_ret, x="payment_method", y="return_rate",
               text="return_rate", color_discrete_sequence=[PALETTE["warning"]],
               title="Tasa de Devolución por Método de Pago (%)",

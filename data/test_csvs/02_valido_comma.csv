@@ -1,0 +1,4 @@
+user_id,product_id,category,subcategory,brand,price,discount,final_price,rating,review_count,stock,seller_id,seller_rating,purchase_date,shipping_time_days,location,device,payment_method,is_returned,delivery_status
+U9101,P9101,Electronics,Laptops,Dell,120000,12,105600,4.7,112,22,S9101,4.6,2026-04-06,3,Delhi,Web,Credit Card,False,Delivered
+U9102,P9102,Sports,Outdoor,TrailPro,15000,10,13500,4.2,44,35,S9102,4.2,2026-04-07,6,Mumbai,Mobile App,UPI,False,Delayed
+U9103,P9103,Home,Kitchen,ChefMate,9000,8,8280,3.8,63,70,S9103,3.9,2026-04-08,4,Chennai,Tablet,Debit Card,True,Returned

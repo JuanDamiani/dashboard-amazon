@@ -40,6 +40,28 @@ def get_css():
     font-family: {FONT} !important;
 }}
 
+/* Streamlit usa iconos Material como ligaduras de texto. Si se fuerza la
+   fuente global sobre esos nodos, aparecen palabras como upload/arrow_down. */
+[data-testid="stIconMaterial"],
+.material-icons,
+.material-icons-outlined,
+.material-symbols-rounded,
+.material-symbols-outlined {{
+    font-family: "Material Symbols Rounded", "Material Icons" !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+    line-height: 1 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    display: inline-flex !important;
+    white-space: nowrap !important;
+    word-wrap: normal !important;
+    direction: ltr !important;
+    -webkit-font-feature-settings: "liga" !important;
+    -webkit-font-smoothing: antialiased !important;
+    font-feature-settings: "liga" !important;
+}}
+
 /* ── Fondo ── */
 .stApp {{
     background-color: {p['bg']};
@@ -189,6 +211,33 @@ def get_css():
 }}
 
 /* ── Plotly fonts ── */
+/* Upload de CSV */
+[data-testid="stFileUploader"] section {{
+    min-height: 132px !important;
+    padding: 18px !important;
+}}
+[data-testid="stFileUploader"] section button {{
+    min-width: 112px !important;
+    min-height: 40px !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+    writing-mode: horizontal-tb !important;
+    transform: none !important;
+}}
+[data-testid="stFileUploader"] section button * {{
+    writing-mode: horizontal-tb !important;
+    transform: none !important;
+    white-space: nowrap !important;
+}}
+[data-testid="stFileUploader"] section div,
+[data-testid="stFileUploader"] section span,
+[data-testid="stFileUploader"] section small {{
+    line-height: 1.35 !important;
+    white-space: normal !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+}}
+
 .js-plotly-plot .plotly text {{
     font-family: {FONT} !important;
 }}
@@ -227,12 +276,12 @@ def get_css():
 """
 
 
-def kpi_card(label, value, delta=None, icon="", tooltip=""):
+def kpi_card(label, value, delta=None, icon="", tooltip="", delta_label="vs periodo anterior"):
     if delta is not None:
         if delta > 0:
-            delta_html = f'<div class="kpi-delta-positive">▲ {delta:+.1f}% vs mes anterior</div>'
+            delta_html = f'<div class="kpi-delta-positive">▲ {delta:+.1f}% {delta_label}</div>'
         elif delta < 0:
-            delta_html = f'<div class="kpi-delta-negative">▼ {delta:.1f}% vs mes anterior</div>'
+            delta_html = f'<div class="kpi-delta-negative">▼ {delta:.1f}% {delta_label}</div>'
         else:
             delta_html = '<div class="kpi-delta-neutral">— Sin variación</div>'
     else:

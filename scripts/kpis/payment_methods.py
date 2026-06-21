@@ -2,7 +2,7 @@
 KPI por metodo de pago.
 
 Cubre RF1 y RF7. Calcula ordenes, ingresos y ticket promedio por metodo de pago.
-Se usa en el resumen ejecutivo y en tablas exportables desde Metabase respetando
+Se usa en el resumen ejecutivo y en tablas exportables desde Streamlit respetando
 los filtros aplicados.
 """
 

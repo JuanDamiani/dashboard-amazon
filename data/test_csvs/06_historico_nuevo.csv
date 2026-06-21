@@ -1,0 +1,4 @@
+user_id;product_id;category;subcategory;brand;price;discount;final_price;rating;review_count;stock;seller_id;seller_rating;purchase_date;shipping_time_days;location;device;payment_method;is_returned;delivery_status
+U9501;P9501;Electronics;Tablets;Lenovo;45000;10;40500;4.2;60;32;S9501;4.0;2026-05-01;3;Delhi;Tablet;Debit Card;False;Delivered
+U9502;P9502;Clothing;Jackets;WinterCo;7000;30;4900;3.7;22;40;S9502;3.8;2026-05-02;7;Mumbai;Web;Cash on Delivery;True;Returned
+U9503;P9503;Home;Decor;Casa;3500;12;3080;4.5;19;90;S9503;4.6;2026-05-03;2;Hyderabad;Mobile App;UPI;False;Delivered

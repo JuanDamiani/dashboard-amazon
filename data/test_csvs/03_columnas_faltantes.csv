@@ -1,0 +1,2 @@
+user_id;product_id;category;subcategory;brand;price;discount;final_price;rating;review_count;stock;seller_rating;purchase_date;shipping_time_days;location;device;payment_method;is_returned;delivery_status
+U9201;P9201;Electronics;Audio;Sony;18000;10;16200;4.5;80;30;4.4;2026-04-09;2;Mumbai;Web;UPI;False;Delivered

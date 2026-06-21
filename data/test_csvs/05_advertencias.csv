@@ -1,0 +1,3 @@
+user_id;product_id;category;subcategory;brand;price;discount;final_price;rating;review_count;stock;seller_id;seller_rating;purchase_date;shipping_time_days;location;device;payment_method;is_returned;delivery_status
+U9401;P9401;Books;Fiction;PageTurner;1200;0;1200;4.8;15;200;S9401;4.9;2026-04-10;2;Pune;Smart TV;Crypto;False;Delivered
+U9402;P9402;Electronics;Wearables;FitMax;11000;10;9900;4.3;40;50;S9402;4.4;2026-04-11;3;Mumbai;Mobile App;UPI;False;Delivered

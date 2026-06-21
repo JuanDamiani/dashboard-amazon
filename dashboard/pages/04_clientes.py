@@ -8,12 +8,27 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from utils.db import query
+from utils.downloads import download_dataframe
 from utils.filters import render_filters
 from utils.style import kpi_card, PALETTE, FONT
 
 # ── FILTROS: globales + local (rating) — RF5 ─────────────
 filters   = render_filters(extra_filters=["rating"])
 where_cli = filters["where_rating"]   # ya incluye el rango de rating
+params    = filters["params_rating"]
+
+df_export = query(f"""
+    SELECT purchase_date, category, location, device, rating,
+           shipping_time_days, final_price, is_returned
+    FROM analytics.fact_orders {where_cli}
+    ORDER BY purchase_date DESC
+""", params)
+download_dataframe(
+    df_export,
+    "clientes_ordenes_filtradas.csv",
+    "Descargar ordenes filtradas de clientes",
+    "clientes_export_csv",
+)
 
 # ── KPIs ─────────────────────────────────────────────────
 kpis_cli = query(f"""
@@ -23,7 +38,7 @@ kpis_cli = query(f"""
         COUNT(*) AS total_ord,
         ROUND(AVG(final_price)::numeric, 0) AS avg_ticket
     FROM analytics.fact_orders {where_cli}
-""")
+""", params)
 avg_rating = kpis_cli["avg_rating"].iloc[0]
 ret_rate   = kpis_cli["ret_rate"].iloc[0]
 total_ord  = kpis_cli["total_ord"].iloc[0]
@@ -57,7 +72,7 @@ with col1:
                ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) AS order_share_pct
         FROM analytics.fact_orders {where_cli}
         GROUP BY rating ORDER BY rating
-    """)
+    """, params)
     fig1 = px.bar(df_dist, x="rating", y="total_orders",
                   text="order_share_pct",
                   color_discrete_sequence=[PALETTE["primary_light"]],
@@ -90,7 +105,7 @@ with col2:
                ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END) * 100, 1) AS return_rate
         FROM analytics.fact_orders {where_cli}
         GROUP BY 1 ORDER BY 1
-    """)
+    """, params)
     fig2 = px.bar(df_range, x="order_share_pct", y="rating_range", orientation="h",
                   text="order_share_pct",
                   color_discrete_sequence=[PALETTE["primary"]],
@@ -124,7 +139,7 @@ with col3:
                COUNT(*) AS ordenes
         FROM analytics.fact_orders {where_cli}
         GROUP BY category ORDER BY avg_rating DESC
-    """)
+    """, params)
     fig3 = go.Figure()
     fig3.add_trace(go.Bar(
         x=df_cat["category"], y=df_cat["avg_rating"],
@@ -158,7 +173,7 @@ with col4:
                COUNT(*) AS ordenes
         FROM analytics.fact_orders {where_cli}
         GROUP BY location ORDER BY avg_rating DESC
-    """)
+    """, params)
     fig4 = px.bar(df_city, x="avg_rating", y="location", orientation="h",
                   text="avg_rating",
                   color_discrete_sequence=[PALETTE["primary_light"]],
@@ -191,7 +206,7 @@ with col5:
                COUNT(*) AS ordenes
         FROM analytics.fact_orders {where_cli}
         GROUP BY shipping_time_days ORDER BY shipping_time_days
-    """)
+    """, params)
     fig5 = go.Figure()
     fig5.add_trace(go.Scatter(
         x=df_ship["shipping_time_days"], y=df_ship["avg_rating"],
@@ -222,7 +237,7 @@ with col6:
                ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)*100,1) AS tasa_dev
         FROM analytics.fact_orders {where_cli}
         GROUP BY device ORDER BY ordenes DESC
-    """)
+    """, params)
     fig6 = go.Figure()
     fig6.add_trace(go.Bar(
         x=df_dev["device"], y=df_dev["ordenes"],

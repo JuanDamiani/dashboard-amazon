@@ -2,12 +2,15 @@
 Overview — RF1
 """
 
+from datetime import timedelta
+
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 
 from utils.db import query
+from utils.downloads import download_dataframe
 from utils.filters import render_filters
 from utils.style import kpi_card, PALETTE, PLOTLY_COLORS, FONT
 
@@ -15,6 +18,20 @@ from utils.style import kpi_card, PALETTE, PLOTLY_COLORS, FONT
 filters      = render_filters(extra_filters=[])
 where        = filters["where"]
 where_rating = filters["where_rating"]
+params       = filters["params"]
+
+df_export = query(f"""
+    SELECT purchase_date, category, location, device, payment_method,
+           delivery_status, final_price, rating, is_returned, seller_id
+    FROM analytics.fact_orders {where}
+    ORDER BY purchase_date DESC
+""", params)
+download_dataframe(
+    df_export,
+    "overview_ordenes_filtradas.csv",
+    "Descargar ordenes filtradas del overview",
+    "overview_export_csv",
+)
 
 # ── KPIs ─────────────────────────────────────────────────
 kpis = query(f"""
@@ -24,19 +41,40 @@ kpis = query(f"""
            ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)::numeric * 100, 1) AS return_rate,
            ROUND(AVG(rating)::numeric, 2) AS avg_rating
     FROM analytics.fact_orders {where}
-""")
+""", params)
 
-variacion = query("""
-    SELECT total_orders_pct_change, total_revenue_pct_change,
-           avg_ticket_pct_change, return_rate_pct_change, avg_product_rating_pct_change
-    FROM analytics.mart_period_variation ORDER BY period_month DESC LIMIT 1
-""")
+def previous_period_params(filters, current_params):
+    fecha_inicio = filters["fecha_inicio"]
+    fecha_fin = filters["fecha_fin"]
+    period_days = max((fecha_fin - fecha_inicio).days, 0)
+    prev_fin = fecha_inicio - timedelta(days=1)
+    prev_inicio = prev_fin - timedelta(days=period_days)
+    prev_params = dict(current_params)
+    prev_params["fecha_inicio"] = prev_inicio
+    prev_params["fecha_fin"] = prev_fin
+    return prev_params
 
-def get_delta(df, col):
+
+prev_params = previous_period_params(filters, params)
+prev_kpis = query(f"""
+    SELECT ROUND(SUM(final_price)::numeric, 0) AS total_revenue,
+           COUNT(*) AS total_orders,
+           ROUND(AVG(final_price)::numeric, 0) AS avg_ticket,
+           ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)::numeric * 100, 1) AS return_rate,
+           ROUND(AVG(rating)::numeric, 2) AS avg_rating
+    FROM analytics.fact_orders {where}
+""", prev_params)
+
+
+def pct_delta(current_df, previous_df, col):
     try:
-        v = df[col].iloc[0]
-        return float(v) if v is not None else None
-    except: return None
+        current = current_df[col].iloc[0]
+        previous = previous_df[col].iloc[0]
+        if pd.isna(current) or pd.isna(previous) or float(previous) == 0:
+            return None
+        return ((float(current) - float(previous)) / abs(float(previous))) * 100
+    except Exception:
+        return None
 
 def fmt_rev(v):
     if v >= 1_000_000_000: return f"₹{v/1_000_000_000:.1f}B"
@@ -57,11 +95,11 @@ ICONS = {
 }
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.markdown(kpi_card("Ingresos Totales", fmt_rev(kpis["total_revenue"].iloc[0]),  get_delta(variacion, "total_revenue_pct_change"),      ICONS["revenue"], "Suma de todos los precios finales del período, en INR."), unsafe_allow_html=True)
-c2.markdown(kpi_card("Total Órdenes",    fmt_num(kpis["total_orders"].iloc[0]),   get_delta(variacion, "total_orders_pct_change"),       ICONS["orders"],  "Cantidad total de órdenes. Cada fila = 1 orden = 1 unidad vendida."), unsafe_allow_html=True)
-c3.markdown(kpi_card("Ticket Promedio",  fmt_rev(kpis["avg_ticket"].iloc[0]),     get_delta(variacion, "avg_ticket_pct_change"),         ICONS["ticket"],  "Ingreso promedio por orden en INR."), unsafe_allow_html=True)
-c4.markdown(kpi_card("Tasa Devolución",  f'{kpis["return_rate"].iloc[0]}%',       get_delta(variacion, "return_rate_pct_change"),        ICONS["return"],  "% de órdenes devueltas. >15% puede indicar problemas."), unsafe_allow_html=True)
-c5.markdown(kpi_card("Rating Promedio",  str(kpis["avg_rating"].iloc[0]),         get_delta(variacion, "avg_product_rating_pct_change"), ICONS["rating"],  "Calificación promedio de productos, escala 1 a 5."), unsafe_allow_html=True)
+c1.markdown(kpi_card("Ingresos Totales", fmt_rev(kpis["total_revenue"].iloc[0]),  pct_delta(kpis, prev_kpis, "total_revenue"), ICONS["revenue"], "Suma de todos los precios finales del período, en INR."), unsafe_allow_html=True)
+c2.markdown(kpi_card("Total Órdenes",    fmt_num(kpis["total_orders"].iloc[0]),   pct_delta(kpis, prev_kpis, "total_orders"),  ICONS["orders"],  "Cantidad total de órdenes. Cada fila = 1 orden = 1 unidad vendida."), unsafe_allow_html=True)
+c3.markdown(kpi_card("Ticket Promedio",  fmt_rev(kpis["avg_ticket"].iloc[0]),     pct_delta(kpis, prev_kpis, "avg_ticket"),    ICONS["ticket"],  "Ingreso promedio por orden en INR."), unsafe_allow_html=True)
+c4.markdown(kpi_card("Tasa Devolución",  f'{kpis["return_rate"].iloc[0]}%',       pct_delta(kpis, prev_kpis, "return_rate"),   ICONS["return"],  "% de órdenes devueltas. >15% puede indicar problemas."), unsafe_allow_html=True)
+c5.markdown(kpi_card("Rating Promedio",  str(kpis["avg_rating"].iloc[0]),         pct_delta(kpis, prev_kpis, "avg_rating"),    ICONS["rating"],  "Calificación promedio de productos, escala 1 a 5."), unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -76,7 +114,7 @@ df_evol = query(f"""
     FROM analytics.fact_orders {where}
     AND DATE_TRUNC('month', purchase_date) < DATE_TRUNC('month', CURRENT_DATE)
     GROUP BY 1 ORDER BY mes
-""")
+""", params)
 df_evol["mes_label"] = pd.to_datetime(df_evol["mes"]).dt.strftime("%b %Y")
 
 metric_sel = st.radio("metric", ["Revenue", "Cantidad"], horizontal=True, label_visibility="collapsed", key="overview_metric")
@@ -155,7 +193,7 @@ with col1:
                ROUND(SUM(final_price)::numeric, 0) AS ingresos,
                ROUND(SUM(final_price)*100.0/SUM(SUM(final_price)) OVER(),1) AS pct
         FROM analytics.fact_orders {where} GROUP BY category ORDER BY pct ASC
-    """)
+    """, params)
     fig1 = px.bar(df_cat, x="pct", y="category", orientation="h", text="pct",
                  color_discrete_sequence=[PALETTE["primary_light"]],
                  title="Ingresos por Categoría (%)",
@@ -175,7 +213,7 @@ with col2:
                ROUND(AVG(shipping_time_days)::numeric,1) AS dias_prom,
                ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)*100,1) AS tasa_dev
         FROM analytics.fact_orders {where} GROUP BY delivery_status ORDER BY pct DESC
-    """)
+    """, params)
     fig2 = px.pie(df_ent, names="delivery_status", values="pct",
                  color_discrete_sequence=PLOTLY_COLORS, title="Estado de Entregas",
                  hole=0.4, custom_data=["dias_prom","tasa_dev","ordenes"])
@@ -193,7 +231,7 @@ with col3:
                ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)*100,1) AS tasa_dev,
                ROUND(AVG(final_price)::numeric,0) AS ticket_prom
         FROM analytics.fact_orders {where} GROUP BY payment_method ORDER BY pct DESC
-    """)
+    """, params)
     fig3 = px.pie(df_pay, names="payment_method", values="pct",
                  color_discrete_sequence=PLOTLY_COLORS, title="Métodos de Pago",
                  hole=0.4, custom_data=["tasa_dev","ticket_prom","ordenes"])
@@ -211,7 +249,7 @@ with col4:
                ROUND(AVG(final_price)::numeric,0) AS ticket_prom,
                ROUND(AVG(rating)::numeric,2) AS avg_rating
         FROM analytics.fact_orders {where} GROUP BY device ORDER BY pct DESC
-    """)
+    """, params)
     fig4 = px.pie(df_dev, names="device", values="pct",
                  color_discrete_sequence=[PALETTE["primary"],PALETTE["primary_light"],PALETTE["light"]],
                  title="Ventas por Dispositivo", hole=0.4,

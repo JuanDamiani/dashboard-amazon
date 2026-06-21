@@ -4,7 +4,7 @@ Este documento explica las decisiones tecnicas tomadas para que el pipeline pued
 
 ## Contexto
 
-El proyecto procesa archivos CSV de e-commerce y los transforma en datos analiticos disponibles para Metabase. En las primeras versiones, el flujo funcionaba correctamente con archivos chicos, pero al probar un CSV de 1.000.000 de filas aparecieron problemas de rendimiento y estabilidad:
+El proyecto procesa archivos CSV de e-commerce y los transforma en datos analiticos disponibles para el dashboard Streamlit. En las primeras versiones, el flujo funcionaba correctamente con archivos chicos, pero al probar un CSV de 1.000.000 de filas aparecieron problemas de rendimiento y estabilidad:
 
 - alto consumo de memoria;
 - tareas de Airflow marcadas como zombie;

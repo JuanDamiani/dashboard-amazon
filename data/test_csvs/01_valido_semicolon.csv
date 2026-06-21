@@ -1,0 +1,6 @@
+user_id;product_id;category;subcategory;brand;price;discount;final_price;rating;review_count;stock;seller_id;seller_rating;purchase_date;shipping_time_days;location;device;payment_method;is_returned;delivery_status
+U9001;P9001;Electronics;Smartphones;Samsung;85000;10;76500;4.6;128;45;S9001;4.8;2026-04-01;2;Mumbai;Mobile App;UPI;False;Delivered
+U9002;P9002;Home;Furniture;HomePro;24000;15;20400;4.1;54;18;S9002;4.3;2026-04-02;5;Delhi;Web;Credit Card;False;Delayed
+U9003;P9003;Beauty;Skincare;GlowUp;3200;5;3040;3.9;87;120;S9003;4.0;2026-04-03;3;Chennai;Tablet;Debit Card;True;Returned
+U9004;P9004;Sports;Fitness;FitMax;7800;20;6240;4.4;31;60;S9004;4.5;2026-04-04;4;Bangalore;Web;Cash on Delivery;False;In Transit
+U9005;P9005;Clothing;Shoes;UrbanStep;5600;25;4200;4.0;76;80;S9005;4.1;2026-04-05;2;Hyderabad;Mobile App;UPI;False;Delivered

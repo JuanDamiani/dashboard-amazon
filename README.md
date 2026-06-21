@@ -1,6 +1,9 @@
 # Amazon E-Commerce Dashboard
 
-Proyecto de ingenieria de datos con Airflow, PostgreSQL y Metabase para procesar un CSV de e-commerce y exponer datos analiticos.
+Proyecto de ingenieria de datos con Airflow, PostgreSQL y Streamlit. Procesa
+archivos CSV de e-commerce, carga un data warehouse y expone un dashboard web
+para cargar datos, ejecutar el pipeline, consultar estado, visualizar KPIs y
+descargar resultados.
 
 ## Requisitos
 
@@ -10,135 +13,63 @@ Proyecto de ingenieria de datos con Airflow, PostgreSQL y Metabase para procesar
 
 ## Primera Instalacion
 
-Clonar el repositorio y entrar a la carpeta del proyecto.
-
 ```powershell
 docker compose up -d --build
 ```
 
-El proyecto tiene defaults en `docker-compose.yml`, por lo que puede levantarse sin crear un `.env`.
+El stack queda disponible en:
 
-Si queres personalizar puertos o credenciales, copia `.env.example` a `.env` y cambia los valores necesarios. El archivo `.env` es local y no se versiona.
-
-El primer arranque puede tardar unos minutos porque Docker construye la imagen de Airflow, inicializa tres bases PostgreSQL y configura Metabase automaticamente.
-
-Para confirmar que los servicios quedaron levantados:
-
-```powershell
-docker compose ps
-```
-
-Es normal que `metabase-setup` aparezca como `Exited (0)`: es un servicio de configuracion que corre una vez, crea la conexion, dashboards y preguntas, y termina.
-
-## Guia Rapida Para Ver Graficos
-
-1. Levantar el stack:
-
-```powershell
-docker compose up -d --build
-```
-
-2. Copiar un CSV valido a `data/input`.
-
-Ejemplo:
-
-```powershell
-Copy-Item "C:\ruta\al\archivo\amazon_ecommerce.csv" ".\data\input\"
-```
-
-El CSV puede usar separador `,` o `;`. El pipeline detecta el separador automaticamente.
-
-3. Entrar a Airflow:
-
-```text
-http://localhost:8080
-```
-
-Credenciales:
-
-- Usuario: `admin`
-- Password: `admin`
-
-4. Activar o ejecutar el DAG `amazon_pipeline`.
-
-El DAG tambien corre cada 5 minutos. Si el archivo ya estaba en `data/input`, puede procesarse automaticamente.
-
-5. Esperar a que la corrida termine en `success`.
-
-Cuando termina bien:
-
-- el CSV se mueve a `data/processed`;
-- `analytics.fact_orders` queda cargada;
-- los marts `analytics.mart_*` se recalculan;
-- Metabase ya puede mostrar los graficos con datos.
-
-6. Entrar a Metabase:
-
-```text
-http://localhost:3000
-```
-
-Credenciales:
-
-- Usuario: `admin@local.test`
-- Password: `AdminLocal2026!`
-
-7. Abrir la coleccion `Amazon E-Commerce`.
-
-Dentro de esa coleccion se crean automaticamente estos dashboards:
-
-- `Resumen`
-- `Ventas`
-- `Logistica`
-- `Clientes`
-- `Vendedores`
-
-Cada dashboard tiene filtros globales de fecha de compra, categoria, ciudad, dispositivo y metodo de pago.
-
-## Uso Posterior
-
-Para levantar servicios ya construidos:
-
-```powershell
-docker compose up -d
-```
-
-Para ver el estado:
-
-```powershell
-docker compose ps
-```
-
-## URLs
-
+- Streamlit: http://localhost:8501
 - Airflow: http://localhost:8080
-- Metabase: http://localhost:3000
 
-Si cambias `AIRFLOW_PORT` o `METABASE_PORT`, usa esos puertos en lugar de `8080` y `3000`.
-
-## Credenciales
-
-Airflow crea el usuario inicial:
+Credenciales Airflow por defecto:
 
 - Usuario: `admin`
 - Password: `admin`
 
-El servicio `metabase-setup` completa automaticamente el asistente inicial en instalaciones nuevas y crea los dashboards del proyecto.
+Credenciales Streamlit por defecto:
 
-Credenciales Metabase por defecto:
+- Usuario: `admin`
+- Password: `admin`
 
-- Usuario: `admin@local.test`
-- Password: `AdminLocal2026!`
+## Uso Para Usuario Final
 
-## Ejecutar El Pipeline
+El usuario final puede trabajar desde Streamlit sin acceder a carpetas ni a
+Docker:
 
-El DAG `amazon_pipeline` corre cada 5 minutos. Busca archivos `*.csv` en `data/input`, selecciona el CSV mas antiguo que todavia no figure en `analytics.processed_files` con el mismo hash de contenido, y procesa un archivo por corrida. Si no hay CSV pendientes, la corrida se saltea.
+1. Entrar a http://localhost:8501.
+2. Iniciar sesion con las credenciales del dashboard.
+3. Abrir la pestaña `Carga`.
+4. Subir un archivo `.csv`.
+5. Presionar `Guardar archivo`.
+6. Presionar `Ejecutar pipeline`.
+7. Consultar el estado de ejecucion en la misma pantalla.
+8. Navegar a las paginas del dashboard cuando el pipeline finalice.
+9. Descargar CSVs desde las tablas o vistas disponibles.
 
-Antes de ejecutarlo, copiar un archivo CSV a:
+Streamlit guarda el archivo en el servidor dentro de `data/input`. Esa carpeta
+esta montada en los contenedores de Airflow como `/opt/airflow/data/input`.
+
+## Flujo Automatizado
+
+El DAG `amazon_pipeline` se ejecuta bajo demanda desde Streamlit o desde la UI
+de Airflow. Cuando Streamlit dispara el DAG por API REST, envia el nombre exacto
+del archivo cargado y Airflow procesa ese archivo especifico. Si se ejecuta
+manualmente sin parametro, toma el CSV mas antiguo pendiente en `data/input`.
+
+Flujo principal:
 
 ```text
-data/input
+check_input_file_available -> check_file_not_processed -> audit_pipeline_start
+-> validate_csv -> load_staging -> clean_staging
+-> KPIs en tandas -> run_quality_checks -> register_processed_file
+-> audit_pipeline_success -> move_processed_file -> notify_success
 ```
+
+Si el procesamiento termina correctamente, el CSV se mueve a `data/processed`.
+Si falla, se registra el error y el archivo se mueve a `data/rejected`.
+
+## Formato Del CSV
 
 Columnas requeridas:
 
@@ -149,101 +80,24 @@ purchase_date, shipping_time_days, location, device, payment_method,
 is_returned, delivery_status
 ```
 
-Para ejecutarlo manualmente:
+El pipeline detecta separador `,` o `;` automaticamente.
 
-1. Entrar a Airflow.
-2. Buscar el DAG `amazon_pipeline`.
-3. Activarlo si esta pausado.
-4. Presionar Trigger DAG.
+## Arquitectura
 
-El flujo esperado es:
+- `postgres-airflow`: metadata de Airflow.
+- `postgres-dwh`: data warehouse analitico.
+- `airflow-init`: inicializa DB y usuario admin.
+- `airflow-scheduler`: agenda y ejecuta tareas.
+- `airflow-webserver`: UI y API REST de Airflow.
+- `streamlit`: interfaz de usuario y dashboard.
 
-```text
-check_input_file_available -> check_file_not_processed -> audit_pipeline_start
--> validate_csv -> load_staging -> clean_staging
--> KPIs en paralelo -> run_quality_checks -> register_processed_file
--> audit_pipeline_success -> notify_success
-```
-
-Cada mart/KPI tiene una tarea propia en Airflow para facilitar trazabilidad y ejecucion paralela.
-
-Para archivos grandes, el ETL evita cargar todo el dataset completo en memoria:
-
-- `validate_csv` valida por chunks.
-- `load_staging` carga por chunks en `staging.amazon_sales_input`, una staging tabular, usando `COPY` de PostgreSQL.
-- `clean_staging` deduplica y transforma hacia `analytics.fact_orders` con SQL y `ON CONFLICT DO NOTHING`.
-- `load_staging` y `clean_staging` ejecutan `ANALYZE` para actualizar estadisticas despues de cargas grandes.
-- Los marts se recalculan con SQL desde `analytics.fact_orders`.
-
-Para incorporar un nuevo dataset, copiar el archivo CSV a `data/input`. No hace falta que se llame `amazon_ecommerce.csv`; por ejemplo, `amazon_ecommerce_1M.csv` sera detectado si todavia no fue procesado.
-
-Cuando una corrida termina correctamente, el CSV se registra en `analytics.processed_files` y se mueve a `data/processed`. Si falla, se registra el fallo en `analytics.etl_audit_log`, se guarda el resumen en `analytics.validation_summary` cuando aplica, y el archivo se mueve a `data/rejected` para evitar reintentos infinitos.
-
-## Metabase Y Dashboards
-
-El servicio `metabase-setup` crea automaticamente:
-
-- usuario inicial de Metabase;
-- conexion `Amazon DWH`;
-- coleccion `Amazon E-Commerce`;
-- preguntas SQL;
-- dashboards `Resumen`, `Ventas`, `Logistica`, `Clientes` y `Vendedores`;
-- filtros globales conectados a las preguntas.
-
-Si los dashboards aparecen vacios, primero verificar que el DAG `amazon_pipeline` haya terminado correctamente con un CSV cargado.
-
-Para ver el resultado del setup automatico:
-
-```powershell
-docker compose logs metabase-setup
-```
-
-Para reprovisionar Metabase manualmente sin reiniciar todo el stack:
-
-```powershell
-docker compose run --rm metabase-setup
-```
-
-### Conexion Manual Al Data Warehouse
-
-Normalmente no hace falta. El servicio `metabase-setup` crea automaticamente la conexion `Amazon DWH`.
-Si necesitas configurarla manualmente, usar estos valores:
-
-- Host: `postgres-dwh`
-- Puerto: `5432`
-- Base: `amazon_dwh`
-- Usuario: `dwh`
-- Password: `dwh123`
-
-Si cambias las variables `DWH_DB_*`, usa esos nuevos valores al configurar Metabase.
-
-## Dashboard Y SRS
-
-La cobertura del SRS y el glosario de indicadores estan documentados en:
-
-- `docs/cobertura_srs_dashboard.md`
-- `docs/glosario_kpis.md`
-- `docs/metabase_preguntas_dashboards.md`
-- `docs/evidencia_metabase.md`
-
-Los dashboards se crean automaticamente con `scripts/metabase_auto_setup.py`. Las preguntas SQL tambien quedan documentadas en `docs/metabase_preguntas_dashboards.md` para que puedan revisarse o recrearse manualmente si fuera necesario.
-
-## Variables De Entorno
-
-Las variables principales estan documentadas en `.env.example`.
+## Variables Principales
 
 Puertos:
 
 - `AIRFLOW_PORT`
-- `METABASE_PORT`
 
-Base de metadata de Airflow:
-
-- `AIRFLOW_DB_USER`
-- `AIRFLOW_DB_PASSWORD`
-- `AIRFLOW_DB_NAME`
-
-Data Warehouse:
+Data warehouse:
 
 - `DWH_DB_USER`
 - `DWH_DB_PASSWORD`
@@ -253,76 +107,53 @@ Data Warehouse:
 - `AIRFLOW_CONN_POSTGRES_DWH`
 - `DB_URL`
 
-Base interna de Metabase:
+API de Airflow usada por Streamlit:
 
-- `METABASE_DB_USER`
-- `METABASE_DB_PASSWORD`
-- `METABASE_DB_NAME`
+- `AIRFLOW_API_USER`
+- `AIRFLOW_API_PASSWORD`
 
-Setup automatico de Metabase:
+Acceso al dashboard:
 
-- `METABASE_ADMIN_EMAIL`
-- `METABASE_ADMIN_PASSWORD`
-- `METABASE_ADMIN_FIRST_NAME`
-- `METABASE_ADMIN_LAST_NAME`
-- `METABASE_SITE_NAME`
-- `METABASE_DWH_NAME`
-- `METABASE_COLLECTION_NAME`
+- `DASHBOARD_AUTH_USER`
+- `DASHBOARD_AUTH_PASSWORD`
 
-Los scripts Python construyen `DB_URL` desde `DWH_DB_*` si no se define manualmente.
+## Dashboard
+
+Paginas:
+
+- `Carga`: upload de CSV, ejecucion del pipeline, estado y descargas operativas.
+- `Overview`: resumen ejecutivo.
+- `Ventas`: analisis comercial.
+- `Logistica`: entregas, demoras y devoluciones.
+- `Clientes`: rating y experiencia.
+- `Vendedores`: performance por seller.
+- `Glosario`: definiciones de KPIs.
 
 ## Logs
 
-Logs de todos los servicios:
-
 ```powershell
 docker compose logs
-```
-
-Logs de un servicio:
-
-```powershell
 docker compose logs airflow-webserver
 docker compose logs airflow-scheduler
+docker compose logs streamlit
 docker compose logs postgres-dwh
-docker compose logs metabase
-```
-
-Seguir logs en vivo:
-
-```powershell
-docker compose logs -f
 ```
 
 ## Tests
 
-Las pruebas estan pensadas para ejecutarse dentro del contenedor de Airflow, sin instalar Python en la maquina host:
+Las pruebas estan pensadas para ejecutarse dentro del contenedor de Airflow:
 
 ```powershell
 docker compose run --rm airflow-scheduler python -m unittest discover -s /opt/airflow/tests -t /opt/airflow
 ```
 
-Si usas Git Bash en Windows, evita que convierta las rutas Linux del contenedor:
-
-```bash
-MSYS_NO_PATHCONV=1 docker compose run --rm airflow-scheduler python -m unittest discover -s /opt/airflow/tests -t /opt/airflow
-```
-
-Tambien se puede validar compilacion de modulos:
+Validacion de compilacion:
 
 ```powershell
 docker compose run --rm airflow-scheduler python -m compileall /opt/airflow/dags /opt/airflow/scripts /opt/airflow/tests
 ```
 
-En Git Bash:
-
-```bash
-MSYS_NO_PATHCONV=1 docker compose run --rm airflow-scheduler python -m compileall /opt/airflow/dags /opt/airflow/scripts /opt/airflow/tests
-```
-
 ## Apagado
-
-Detener servicios sin borrar volumenes:
 
 ```powershell
 docker compose down
@@ -330,17 +161,9 @@ docker compose down
 
 ## Reinicio Limpio
 
-Esto borra los volumenes de PostgreSQL y Metabase. Usalo solo cuando quieras empezar desde cero.
+Esto borra los volumenes de PostgreSQL y reinicia las bases desde cero.
 
 ```powershell
 docker compose down -v
 docker compose up -d --build
 ```
-
-## Problemas Comunes
-
-Si Airflow o Metabase no levantan porque el puerto esta ocupado, cambia `AIRFLOW_PORT` o `METABASE_PORT` en `.env`.
-
-Si aparece un warning similar a `Error loading config file: C:\Users\...\ .docker\config.json: Acceso denegado`, corresponde a permisos locales de Docker Desktop en Windows. No es un error del proyecto.
-
-Si cambias credenciales o nombres de base con volumenes ya creados, PostgreSQL puede conservar la configuracion anterior. Para aplicar cambios de base desde cero, usa el reinicio limpio.

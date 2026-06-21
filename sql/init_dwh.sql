@@ -12,7 +12,7 @@
 --     ↓
 -- ANALYTICS MARTS
 --     ↓
--- METABASE
+-- STREAMLIT
 --
 -- Objetivos:
 -- - Persistencia histórica

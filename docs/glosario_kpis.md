@@ -17,11 +17,11 @@ Este documento cubre RF9: definicion, formula e interpretacion de los KPIs usado
 
 ## Filtros Globales
 
-Los filtros globales del SRS deben aplicarse desde Metabase usando campos de `analytics.fact_orders` o joins/preguntas basadas en:
+Los filtros globales del SRS se aplican desde Streamlit usando campos de
+`analytics.fact_orders`:
 
 - Fecha: `purchase_date`
 - Categoria: `category`
 - Ciudad: `location`
 - Dispositivo: `device`
 - Metodo de pago: `payment_method`
-

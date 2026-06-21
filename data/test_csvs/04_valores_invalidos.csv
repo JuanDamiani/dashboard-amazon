@@ -1,0 +1,3 @@
+user_id;product_id;category;subcategory;brand;price;discount;final_price;rating;review_count;stock;seller_id;seller_rating;purchase_date;shipping_time_days;location;device;payment_method;is_returned;delivery_status
+U9301;P9301;Electronics;Audio;Sony;18000;150;16200;6.2;80;30;S9301;4.4;2026-04-09;2;Mumbai;Web;UPI;No;Delivered Late
+U9302;P9302;Beauty;Makeup;GlowUp;bad_price;5;1900;4.1;12;25;S9302;4.2;fecha_mala;1;Delhi;Mobile App;Credit Card;False;Delivered

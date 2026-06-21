@@ -46,7 +46,6 @@ DEFAULTS = {
 ALL_LOCAL = ["subcategoria", "marca", "estado_entrega", "rating"]
 
 
-@st.cache_data(ttl=3600)
 def load_filter_options():
     dr     = query("SELECT MIN(purchase_date) AS mn, MAX(purchase_date) AS mx FROM analytics.fact_orders")
     cats   = query("SELECT DISTINCT category        FROM analytics.fact_orders ORDER BY category")["category"].tolist()
@@ -83,18 +82,22 @@ def _clean_multi(key, options):
         st.session_state[key] = valid
 
 
-def _esc(v):
-    return str(v).replace("'", "''")
-
-
-def _in(col, values):
-    inner = ", ".join(f"'{_esc(v)}'" for v in values)
-    return f"{col} IN ({inner})"
+def _in(col, values, prefix, params):
+    names = []
+    for index, value in enumerate(values):
+        name = f"{prefix}_{index}"
+        params[name] = value
+        names.append(f":{name}")
+    return f"{col} IN ({', '.join(names)})"
 
 
 def render_filters(extra_filters=None):
     init_filters()
     dr, cats, locs, devs, pays, subs, brands, stats = load_filter_options()
+    if dr.empty or pd.isna(dr["mn"].iloc[0]) or pd.isna(dr["mx"].iloc[0]):
+        st.info("Todavia no hay datos cargados. Subi un CSV desde la pestaña Carga y ejecuta el pipeline.")
+        st.stop()
+
     min_date = pd.to_datetime(dr["mn"].iloc[0]).date()
     max_date = pd.to_datetime(dr["mx"].iloc[0]).date()
 
@@ -219,28 +222,37 @@ def render_filters(extra_filters=None):
         fecha_fin    = max_date
 
     # ── Construir WHERE ─────────────────────────────────────
-    conds = [f"purchase_date BETWEEN '{fecha_inicio}' AND '{fecha_fin}'"]
+    params = {
+        "fecha_inicio": fecha_inicio,
+        "fecha_fin": fecha_fin,
+    }
+    conds = ["purchase_date BETWEEN :fecha_inicio AND :fecha_fin"]
 
     # Globales (multiselect): siempre
-    if st.session_state["flt_categoria"]:   conds.append(_in("category",       st.session_state["flt_categoria"]))
-    if st.session_state["flt_ciudad"]:      conds.append(_in("location",       st.session_state["flt_ciudad"]))
-    if st.session_state["flt_dispositivo"]: conds.append(_in("device",         st.session_state["flt_dispositivo"]))
-    if st.session_state["flt_metodo_pago"]: conds.append(_in("payment_method", st.session_state["flt_metodo_pago"]))
+    if st.session_state["flt_categoria"]:   conds.append(_in("category",       st.session_state["flt_categoria"],   "categoria", params))
+    if st.session_state["flt_ciudad"]:      conds.append(_in("location",       st.session_state["flt_ciudad"],      "ciudad", params))
+    if st.session_state["flt_dispositivo"]: conds.append(_in("device",         st.session_state["flt_dispositivo"], "dispositivo", params))
+    if st.session_state["flt_metodo_pago"]: conds.append(_in("payment_method", st.session_state["flt_metodo_pago"], "metodo_pago", params))
 
     # Locales: solo si la pagina los declara
-    if "subcategoria"   in local_active and st.session_state["flt_subcategoria"]:   conds.append(_in("subcategory",     st.session_state["flt_subcategoria"]))
-    if "marca"          in local_active and st.session_state["flt_marca"]:          conds.append(_in("brand",           st.session_state["flt_marca"]))
-    if "estado_entrega" in local_active and st.session_state["flt_estado_entrega"]: conds.append(_in("delivery_status", st.session_state["flt_estado_entrega"]))
+    if "subcategoria"   in local_active and st.session_state["flt_subcategoria"]:   conds.append(_in("subcategory",     st.session_state["flt_subcategoria"],   "subcategoria", params))
+    if "marca"          in local_active and st.session_state["flt_marca"]:          conds.append(_in("brand",           st.session_state["flt_marca"],          "marca", params))
+    if "estado_entrega" in local_active and st.session_state["flt_estado_entrega"]: conds.append(_in("delivery_status", st.session_state["flt_estado_entrega"], "estado_entrega", params))
 
     rating_min, rating_max = st.session_state["flt_rating"]
+    params_rating = dict(params)
     if "rating" in local_active:
-        conds_rating = conds + [f"rating BETWEEN {rating_min} AND {rating_max}"]
+        params_rating["rating_min"] = rating_min
+        params_rating["rating_max"] = rating_max
+        conds_rating = conds + ["rating BETWEEN :rating_min AND :rating_max"]
     else:
         conds_rating = list(conds)
 
     return {
         "where":           "WHERE " + " AND ".join(conds),
         "where_rating":    "WHERE " + " AND ".join(conds_rating),
+        "params":          params,
+        "params_rating":   params_rating,
         "fecha_inicio":    fecha_inicio,
         "fecha_fin":       fecha_fin,
         "periodo":         periodo,
