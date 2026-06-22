@@ -2,12 +2,10 @@
 Pagina de Analisis Logistico — RF4
 Todos los indicadores responden a los filtros globales + estado_entrega (RF2/RF4).
 
-Criterio de COLORES (justificacion):
-- Azul  = metrica neutral / operativa (no es "buena" ni "mala", solo describe).
-- Rojo  = supera el umbral del periodo (promedio) -> requiere atencion.
-- El grafico de estado de entrega usa semaforo porque cada estado tiene
-  significado propio: verde = entregado, azul = en transito, naranja = demorado,
-  rojo = devuelto.
+Criterio de COLORES:
+- Todas las barras en el mismo azul institucional (consistencia con el dashboard).
+- En rojo solo la(s) barra(s) con el valor mas alto: la peor ciudad / categoria /
+  metodo en devoluciones o tiempo de envio. El rojo marca el foco del problema.
 """
 
 import streamlit as st
@@ -54,9 +52,13 @@ def pct_delta(current_df, previous_df, col):
         return None
 
 
-def alert_colors(values, threshold, alert=PALETTE["danger"], normal=PALETTE["primary_light"]):
-    """Pinta de rojo (alerta) las barras por encima del umbral; el resto azul."""
-    return [alert if (v is not None and v > threshold) else normal for v in values]
+def highlight_max(values, normal=PALETTE["primary"], alert=PALETTE["danger"]):
+    """Pinta de rojo la(s) barra(s) con el valor mas alto; el resto en el mismo azul."""
+    vals = [v for v in values if v is not None]
+    if not vals:
+        return [normal] * len(values)
+    mx = max(vals)
+    return [alert if (v is not None and v == mx) else normal for v in values]
 
 
 # ── KPIs (todos filtrados, una sola query) ───────────────
@@ -111,19 +113,12 @@ with col1:
         """, params)
         chart_header("Distribución por Estado de Entrega (%)", df_est, "estado_entrega.csv", "exp_log_est",
                      ratio=(18, 1),
-                     info="Porcentaje de órdenes en cada estado de entrega. Color semáforo: verde = entregado, azul = en tránsito, naranja = demorado, rojo = devuelto. Da una foto rápida de la salud operativa.")
-        STATUS_COLOR = {
-            "Delivered":  PALETTE["success"],
-            "In Transit": PALETTE["primary_light"],
-            "Delayed":    PALETTE["warning"],
-            "Returned":   PALETTE["danger"],
-        }
-        colors_est = [STATUS_COLOR.get(s, PALETTE["primary_light"]) for s in df_est["delivery_status"]]
+                     info="Porcentaje de órdenes en cada estado de entrega (entregado, en tránsito, demorado, devuelto). Da una foto rápida de la salud operativa.")
         fig1 = px.bar(df_est, x="pct", y="delivery_status", orientation="h", text="pct",
                       custom_data=["dias_prom", "tasa_dev", "ordenes"],
                       labels={"pct": "%", "delivery_status": ""})
         fig1.update_traces(
-            marker_color=colors_est,
+            marker_color=PALETTE["primary"],
             texttemplate="%{text:.1f}%", textposition="outside",
             hovertemplate="<b>%{y}</b><br>%: %{x:.1f}%<br>Días prom: %{customdata[0]}<br>Dev: %{customdata[1]}%<br>Órdenes: %{customdata[2]:,}<extra></extra>",
         )
@@ -143,13 +138,12 @@ with col2:
         """, params)
         chart_header("Tiempo Promedio de Envío por Ciudad (días)", df_city, "tiempo_envio_ciudad.csv", "exp_log_city",
                      ratio=(18, 1),
-                     info="Días promedio de envío por ciudad. En rojo las ciudades que superan el promedio general del período (las más lentas).")
-        thr_city = df_city["dias_prom"].mean()
+                     info="Días promedio de envío por ciudad. En rojo la ciudad con el mayor tiempo de envío (la más lenta).")
         fig2 = px.bar(df_city, x="dias_prom", y="location", orientation="h", text="dias_prom",
                       custom_data=["tasa_dev", "ordenes"],
                       labels={"dias_prom": "Días", "location": ""})
         fig2.update_traces(
-            marker_color=alert_colors(df_city["dias_prom"], thr_city),
+            marker_color=highlight_max(df_city["dias_prom"]),
             texttemplate="%{text:.0f} días", textposition="outside",
             hovertemplate="<b>%{y}</b><br>Días prom: %{x:.0f}<br>Dev: %{customdata[0]}%<br>Órdenes: %{customdata[1]:,}<extra></extra>",
         )
@@ -173,12 +167,11 @@ with col3:
         """, params)
         chart_header("Tasa de Devolución por Categoría (%)", df_ret_cat, "devolucion_categoria.csv", "exp_log_retcat",
                      ratio=(18, 1),
-                     info="Porcentaje de órdenes devueltas por categoría (devueltas / total). En rojo las categorías por encima del promedio, que concentran el problema.")
-        thr_rcat = df_ret_cat["tasa_dev"].mean()
+                     info="Porcentaje de órdenes devueltas por categoría (devueltas / total). En rojo la categoría con mayor tasa de devolución.")
         fig3 = px.bar(df_ret_cat, x="tasa_dev", y="category", orientation="h", text="tasa_dev",
                       custom_data=["ordenes"], labels={"tasa_dev": "%", "category": ""})
         fig3.update_traces(
-            marker_color=alert_colors(df_ret_cat["tasa_dev"], thr_rcat),
+            marker_color=highlight_max(df_ret_cat["tasa_dev"]),
             texttemplate="%{text:.1f}%", textposition="outside",
             hovertemplate="<b>%{y}</b><br>Dev: %{x:.1f}%<br>Órdenes: %{customdata[0]:,}<extra></extra>",
         )
@@ -197,12 +190,11 @@ with col4:
         """, params)
         chart_header("Tasa de Devolución por Ciudad (%)", df_ret_city, "devolucion_ciudad.csv", "exp_log_retcity",
                      ratio=(18, 1),
-                     info="Porcentaje de órdenes devueltas por ciudad. En rojo las ciudades por encima del promedio del período.")
-        thr_rcity = df_ret_city["tasa_dev"].mean()
+                     info="Porcentaje de órdenes devueltas por ciudad. En rojo la ciudad con mayor tasa de devolución.")
         fig4 = px.bar(df_ret_city, x="tasa_dev", y="location", orientation="h", text="tasa_dev",
                       custom_data=["ordenes"], labels={"tasa_dev": "%", "location": ""})
         fig4.update_traces(
-            marker_color=alert_colors(df_ret_city["tasa_dev"], thr_rcity),
+            marker_color=highlight_max(df_ret_city["tasa_dev"]),
             texttemplate="%{text:.1f}%", textposition="outside",
             hovertemplate="<b>%{y}</b><br>Dev: %{x:.1f}%<br>Órdenes: %{customdata[0]:,}<extra></extra>",
         )
@@ -228,12 +220,15 @@ with col5:
         df_trend["mes_label"] = pd.to_datetime(df_trend["mes"]).dt.strftime("%b %Y")
         chart_header("Tendencia Mensual de Pedidos Demorados (%)", df_trend, "tendencia_demorados.csv", "exp_log_trend",
                      ratio=(18, 1),
-                     info="Porcentaje de pedidos demorados por mes (demorados / total del mes). Permite ver si las demoras mejoran o empeoran en el tiempo.")
+                     info="Porcentaje de pedidos demorados por mes (demorados / total del mes). Permite ver si las demoras mejoran o empeoran en el tiempo. En rojo el mes con mayor porcentaje de demoras.")
         fig5 = px.line(df_trend, x="mes_label", y="pct_demorados", markers=True,
                        text=df_trend["pct_demorados"].apply(lambda v: f"{v:.1f}%"),
                        labels={"pct_demorados": "%", "mes_label": "Mes"},
-                       color_discrete_sequence=[PALETTE["danger"]])
+                       color_discrete_sequence=[PALETTE["primary"]])
         fig5.update_traces(
+            line=dict(color=PALETTE["primary"]),
+            marker=dict(size=8, color=highlight_max(df_trend["pct_demorados"]),
+                        line=dict(color="white", width=1)),
             textposition="top center",
             textfont=dict(size=9, color=PALETTE["text_light"]),
             hovertemplate="<b>%{x}</b><br>Demorados: %{y:.1f}%<extra></extra>",
@@ -259,9 +254,9 @@ with col6:
         fig6.add_trace(go.Scatter(
             x=df_dvr["shipping_time_days"], y=df_dvr["return_rate"],
             mode="lines+markers",
-            line=dict(color=PALETTE["danger"], width=2.5, shape="spline"),
-            marker=dict(size=7, color=PALETTE["danger"], line=dict(color="white", width=1.5)),
-            fill="tozeroy", fillcolor="rgba(192,57,43,0.06)",
+            line=dict(color=PALETTE["primary"], width=2.5, shape="spline"),
+            marker=dict(size=7, color=PALETTE["primary"], line=dict(color="white", width=1.5)),
+            fill="tozeroy", fillcolor="rgba(28,63,94,0.06)",
             customdata=df_dvr[["total_orders"]].values,
             hovertemplate="<b>%{x} días</b><br>Dev: %{y:.1f}%<br>Órdenes: %{customdata[0]:,}<extra></extra>",
         ))
@@ -300,7 +295,7 @@ with st.container(key="chartcard_log_map"):
     fig_map = px.scatter_geo(
         df_map, lat="lat", lon="lon", size="ordenes", color="tasa_dev",
         hover_name="location",
-        color_continuous_scale=["#FDEDEC", PALETTE["warning"], PALETTE["danger"]],
+        color_continuous_scale=["#EAF1F8", PALETTE["primary_light"], PALETTE["danger"]],
         custom_data=["dias_prom", "tasa_dev", "ordenes"],
         labels={"tasa_dev": "Dev %"},
     )
@@ -338,13 +333,12 @@ with st.container(key="chartcard_log_pay"):
     """, params)
     chart_header("Tasa de Devolución por Método de Pago (%)", df_pay_ret, "devolucion_metodo_pago.csv", "exp_log_pay",
                  ratio=(24, 1),
-                 info="Tasa de devolución por método de pago (devueltas / total). En rojo los métodos por encima del promedio.")
-    thr_pay = df_pay_ret["return_rate"].mean()
+                 info="Tasa de devolución por método de pago (devueltas / total). En rojo el método con mayor tasa de devolución.")
     fig7 = px.bar(df_pay_ret, x="payment_method", y="return_rate", text="return_rate",
                   labels={"return_rate": "Tasa devolución (%)", "payment_method": "Método de pago"},
                   custom_data=["total_orders", "returned_orders"])
     fig7.update_traces(
-        marker_color=alert_colors(df_pay_ret["return_rate"], thr_pay),
+        marker_color=highlight_max(df_pay_ret["return_rate"]),
         texttemplate="%{text:.1f}%", textposition="outside",
         hovertemplate="<b>%{x}</b><br>Dev: %{y:.1f}%<br>Total órdenes: %{customdata[0]:,}<br>Devueltas: %{customdata[1]:,}<extra></extra>",
     )

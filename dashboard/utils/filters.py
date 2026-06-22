@@ -40,9 +40,15 @@ DEFAULTS = {
     "flt_marca":          [],
     "flt_estado_entrega": [],
     "flt_rating":         (1.0, 5.0),
+    "flt_vendedor":       "Todos",
+    "flt_min_ordenes":    1,
 }
 
 ALL_LOCAL = ["subcategoria", "marca", "estado_entrega", "rating"]
+
+# Alto del espacio sobre los botones "Más filtros" y "Limpiar", para alinearlos
+# con los dropdowns. SUBÍ el número para BAJARLOS, bajalo para subirlos.
+BTN_SPACER_PX = 37
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -58,6 +64,13 @@ def load_filter_options():
     brands = query("SELECT DISTINCT brand           FROM analytics.fact_orders ORDER BY brand")["brand"].tolist()
     stats  = query("SELECT DISTINCT delivery_status FROM analytics.fact_orders ORDER BY delivery_status")["delivery_status"].tolist()
     return dr, cats, locs, devs, pays, subs, brands, stats
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_seller_options():
+    """Lista de vendedores para el filtro local de la pagina Vendedores (cacheado)."""
+    s = query("SELECT DISTINCT seller_id FROM analytics.fact_orders WHERE seller_id IS NOT NULL ORDER BY seller_id")
+    return s["seller_id"].tolist()
 
 
 def init_filters():
@@ -174,15 +187,10 @@ def render_filters(extra_filters=None):
         multiselect_popover(pays, "flt_metodo_pago", "Todos")
 
     with fc[5]:
-        st.caption(" ")
-        st.markdown("<div style='margin-top: 22px'></div>", unsafe_allow_html=True)
-
+        st.markdown(f'<div style="height:{BTN_SPACER_PX}px"></div>', unsafe_allow_html=True)
         if extra:
-            with st.popover(
-                "Más filtros",
-                icon=":material/filter_alt:",
-                use_container_width=True
-            ):
+            with st.popover("Más filtros", icon=":material/filter_alt:",
+                            use_container_width=True):
                 pcols = st.columns(len(extra))
                 for pcol, filtro in zip(pcols, extra):
                     with pcol:
@@ -194,26 +202,21 @@ def render_filters(extra_filters=None):
                             _local_multi("Estado de entrega", stats, "flt_estado_entrega")
                         elif filtro == "rating":
                             st.caption("Rango de rating")
-                            st.slider(
-                                "Rating",
-                                1.0,
-                                5.0,
-                                step=0.5,
-                                key="flt_rating",
-                                label_visibility="collapsed"
-                            )
+                            st.slider("Rating", 1.0, 5.0, step=0.5,
+                                      key="flt_rating", label_visibility="collapsed")
+                        elif filtro == "vendedor":
+                            st.caption("Vendedor")
+                            st.selectbox("Vendedor", ["Todos"] + load_seller_options(),
+                                         key="flt_vendedor", label_visibility="collapsed")
+                        elif filtro == "min_ordenes":
+                            st.caption("Mín. órdenes / vendedor")
+                            st.slider("Mín órdenes", 1, 100,
+                                      key="flt_min_ordenes", label_visibility="collapsed")
 
     with fc[6]:
-        st.caption(" ")
-        st.markdown("<div style='margin-top: 22px'></div>", unsafe_allow_html=True)
-
-        st.button(
-            "",
-            icon=":material/filter_alt_off:",
-            help="Limpiar todos los filtros",
-            key="_btn_clear",
-            on_click=_clear_filters
-        )
+        st.markdown(f'<div style="height:{BTN_SPACER_PX}px"></div>', unsafe_allow_html=True)
+        st.button("", icon=":material/filter_alt_off:", help="Limpiar todos los filtros", key="_btn_clear",
+                  on_click=_clear_filters)
 
     # ── Indicador de filtros activos (alto fijo, sin salto) ─
     n_activos = sum([
@@ -227,6 +230,8 @@ def render_filters(extra_filters=None):
     if "marca"          in local_active: n_activos += bool(st.session_state["flt_marca"])
     if "estado_entrega" in local_active: n_activos += bool(st.session_state["flt_estado_entrega"])
     if "rating"         in local_active: n_activos += tuple(st.session_state["flt_rating"]) != (1.0, 5.0)
+    if "vendedor"       in local_active: n_activos += st.session_state["flt_vendedor"] != "Todos"
+    if "min_ordenes"    in local_active: n_activos += st.session_state["flt_min_ordenes"] != 1
 
     texto = (
         f'● {n_activos} filtro{"s" if n_activos > 1 else ""} '
@@ -269,6 +274,9 @@ def render_filters(extra_filters=None):
     if "subcategoria"   in local_active and st.session_state["flt_subcategoria"]:   conds.append(_in("subcategory",     st.session_state["flt_subcategoria"],   "subcategoria", params))
     if "marca"          in local_active and st.session_state["flt_marca"]:          conds.append(_in("brand",           st.session_state["flt_marca"],          "marca", params))
     if "estado_entrega" in local_active and st.session_state["flt_estado_entrega"]: conds.append(_in("delivery_status", st.session_state["flt_estado_entrega"], "estado_entrega", params))
+    if "vendedor"       in local_active and st.session_state["flt_vendedor"] != "Todos":
+        params["seller_id"] = st.session_state["flt_vendedor"]
+        conds.append("seller_id = :seller_id")
 
     rating_min, rating_max = st.session_state["flt_rating"]
     params_rating = dict(params)
@@ -296,5 +304,7 @@ def render_filters(extra_filters=None):
         "estado_entrega":  st.session_state["flt_estado_entrega"],
         "rating_min":      rating_min,
         "rating_max":      rating_max,
+        "vendedor":        st.session_state["flt_vendedor"],
+        "min_ordenes":     st.session_state["flt_min_ordenes"],
         "filtros_activos": n_activos,
     }
