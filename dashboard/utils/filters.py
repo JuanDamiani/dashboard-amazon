@@ -118,6 +118,17 @@ def _local_multi(label, options, key):
     st.session_state[key] = _checkbox_multi(options, key, sel)
 
 
+def _local_ms(label, options, key, placeholder="Todas"):
+    """Filtro multiple COMPACTO (st.multiselect) para el popover 'Mas filtros':
+    se abre al clickear y tiene buscador; no muestra todas las opciones desplegadas.
+    Limpia valores stale para que st.multiselect no rompa si cambian las opciones."""
+    st.session_state.setdefault(key, [])
+    st.session_state[key] = [v for v in st.session_state[key] if v in options]
+    st.caption(label)
+    st.multiselect(label, options, key=key, placeholder=placeholder,
+                   label_visibility="collapsed")
+
+
 def _in(col, values, prefix, params):
     names = []
     for index, value in enumerate(values):
@@ -144,31 +155,27 @@ def render_filters(extra_filters=None):
     fc = st.columns([1.7, 1.6, 1.6, 1.6, 1.6, 1.1, 0.5])
 
     with fc[0]:
+        st.caption("Período")
         periodo_sel = st.session_state["flt_periodo"]
         if periodo_sel == "Personalizado":
             rango = st.session_state.get("flt_fecha_rango")
             if isinstance(rango, (tuple, list)) and len(rango) == 2:
-                cap = f"Período · {rango[0].strftime('%d/%m/%y')} – {rango[1].strftime('%d/%m/%y')}"
+                btn_label = f"📅 {rango[0].strftime('%d/%m/%y')} – {rango[1].strftime('%d/%m/%y')}"
             else:
-                cap = "Período · Personalizado"
-            st.caption(cap)
-            ps, pp = st.columns([4, 1])
-            with ps:
-                st.selectbox("Período", list(PERIODO_OPCIONES.keys()),
-                             key="flt_periodo", label_visibility="collapsed")
-            with pp:
-                with st.popover("📅", use_container_width=True):
-                    st.caption("Rango de fechas")
-                    st.date_input(
-                        "Rango", value=(min_date, max_date),
-                        min_value=min_date, max_value=max_date,
-                        key="flt_fecha_rango", label_visibility="collapsed",
-                        format="DD/MM/YYYY",
-                    )
+                btn_label = "📅 Personalizado"
         else:
-            st.caption("Período")
-            st.selectbox("Período", list(PERIODO_OPCIONES.keys()),
-                         key="flt_periodo", label_visibility="collapsed")
+            btn_label = periodo_sel
+        with st.popover(btn_label, use_container_width=True):
+            st.radio("Período", list(PERIODO_OPCIONES.keys()),
+                     key="flt_periodo", label_visibility="collapsed")
+            if st.session_state["flt_periodo"] == "Personalizado":
+                st.caption("Rango de fechas")
+                st.date_input(
+                    "Rango", value=(min_date, max_date),
+                    min_value=min_date, max_value=max_date,
+                    key="flt_fecha_rango", label_visibility="collapsed",
+                    format="DD/MM/YYYY",
+                )
 
     with fc[1]:
         st.caption("Categoría")
@@ -195,11 +202,11 @@ def render_filters(extra_filters=None):
                 for pcol, filtro in zip(pcols, extra):
                     with pcol:
                         if filtro == "subcategoria":
-                            _local_multi("Subcategoría", subs, "flt_subcategoria")
+                            _local_ms("Subcategoría", subs, "flt_subcategoria", "Todas")
                         elif filtro == "marca":
-                            _local_multi("Marca", brands, "flt_marca")
+                            _local_ms("Marca", brands, "flt_marca", "Todas")
                         elif filtro == "estado_entrega":
-                            _local_multi("Estado de entrega", stats, "flt_estado_entrega")
+                            _local_ms("Estado de entrega", stats, "flt_estado_entrega", "Todos")
                         elif filtro == "rating":
                             st.caption("Rango de rating")
                             st.slider("Rating", 1.0, 5.0, step=0.5,

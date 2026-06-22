@@ -23,34 +23,44 @@ def _check_credentials(username, password):
     )
 
 
-def _login():
-    st.markdown(
-        """
-        <div style="max-width:420px;margin:56px auto 18px auto;padding-left:15px;">
-            <div style="font-size:1.4rem;font-weight:700;color:#1C3F5E;">Amazon Analytics</div>
-            <div style="font-size:0.9rem;color:#6B7A8D;margin-top:4px;">Acceso al dashboard</div>
-        </div>
-        """,
-     unsafe_allow_html=True,
-)
-    username = st.text_input("Usuario", key="login_user")
-    password = st.text_input("Password", type="password", key="login_pass")
-    if st.button("Ingresar", use_container_width=True, type="primary"):
-        if _check_credentials(username, password):
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Usuario o password incorrectos.")
-
-
 def _logout():
     st.session_state["authenticated"] = False
     st.rerun()
 
 
+# Caja de auth SIEMPRE presente (vacía si ya estás logueada). Mantener este
+# elemento fijo arriba hace que el árbol de elementos sea idéntico en todas las
+# corridas: así no parpadea al ingresar NI se duplica el header al navegar.
+auth_box = st.empty()
 if not st.session_state.get("authenticated", False):
-    _login()
-    st.stop()
+    with auth_box.container():
+        st.markdown(
+            """
+            <div style="max-width:420px;margin:56px auto 18px auto;">
+                <div style="font-size:1.4rem;font-weight:700;color:#1C3F5E;">Amazon Analytics</div>
+                <div style="font-size:0.9rem;color:#6B7A8D;margin-top:4px;">Acceso al dashboard</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        username = st.text_input("Usuario", key="login_user")
+        password = st.text_input("Password", type="password", key="login_pass")
+        if st.button("Ingresar", use_container_width=True, type="primary"):
+            if _check_credentials(username, password):
+                st.session_state["authenticated"] = True
+            else:
+                st.error("Usuario o password incorrectos.")
+    if st.session_state.get("authenticated", False):
+        auth_box.empty()   # recién logueada: limpia el form y sigue al dashboard
+    else:
+        st.stop()
+
+# ── RF8: preservar los filtros aplicados al navegar ──────
+# Carga y Glosario no renderizan los filtros; re-asignar cada key flt_* a sí
+# misma la "fija" en session_state para que Streamlit no la descarte al pasar
+# por esas páginas (si no, Período/Rating/Vendedor podrían resetearse).
+for _k in [k for k in st.session_state.keys() if k.startswith("flt_")]:
+    st.session_state[_k] = st.session_state[_k]
 
 # ── Paginas ──────────────────────────────────────────────
 PAGES = {

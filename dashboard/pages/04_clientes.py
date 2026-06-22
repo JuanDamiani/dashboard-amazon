@@ -6,9 +6,11 @@ Color: rating = azul (un valor alto es bueno, no una alerta); la tasa de
 devolucion (metrica "mala") va en rojo.
 """
 
+import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import timedelta
 
 from utils.db import query
 from utils.filters import render_filters
@@ -19,19 +21,49 @@ filters   = render_filters(extra_filters=["rating"])
 where_cli = filters["where_rating"]   # ya incluye el rango de rating
 params    = filters["params_rating"]
 
-# ── KPIs ─────────────────────────────────────────────────
-kpis_cli = query(f"""
+# ── Helpers de comparación vs período anterior ───────────
+def previous_period_params(filters, current_params):
+    fecha_inicio = filters["fecha_inicio"]
+    fecha_fin = filters["fecha_fin"]
+    period_days = max((fecha_fin - fecha_inicio).days, 0)
+    prev_fin = fecha_inicio - timedelta(days=1)
+    prev_inicio = prev_fin - timedelta(days=period_days)
+    pp = dict(current_params)
+    pp["fecha_inicio"] = prev_inicio
+    pp["fecha_fin"] = prev_fin
+    return pp
+
+
+def pct_delta_val(cur, prev):
+    try:
+        if pd.isna(cur) or pd.isna(prev) or float(prev) == 0:
+            return None
+        return ((float(cur) - float(prev)) / abs(float(prev))) * 100
+    except Exception:
+        return None
+
+
+# ── KPIs (con variación vs período anterior) ─────────────
+KPIS_SQL = f"""
     SELECT
         ROUND(AVG(rating)::numeric, 2) AS avg_rating,
         ROUND(AVG(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)::numeric * 100, 1) AS ret_rate,
         COUNT(*) AS total_ord,
         ROUND(AVG(final_price)::numeric, 0) AS avg_ticket
     FROM analytics.fact_orders {where_cli}
-""", params)
+"""
+kpis_cli = query(KPIS_SQL, params)
+prev_cli = query(KPIS_SQL, previous_period_params(filters, params))
+
 avg_rating = kpis_cli["avg_rating"].iloc[0]
 ret_rate   = kpis_cli["ret_rate"].iloc[0]
 total_ord  = kpis_cli["total_ord"].iloc[0]
 avg_ticket = kpis_cli["avg_ticket"].iloc[0]
+
+d_rating = pct_delta_val(avg_rating, prev_cli["avg_rating"].iloc[0])
+d_ret    = pct_delta_val(ret_rate,   prev_cli["ret_rate"].iloc[0])
+d_ord    = pct_delta_val(total_ord,  prev_cli["total_ord"].iloc[0])
+d_ticket = pct_delta_val(avg_ticket, prev_cli["avg_ticket"].iloc[0])
 
 
 def fmt_num(v):
@@ -46,10 +78,10 @@ ICON_BOX    = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" strok
 ICON_TICKET = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7A8D" stroke-width="1.5"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z"/></svg>'
 
 c1, c2, c3, c4 = st.columns(4)
-c1.markdown(kpi_card("Rating Promedio",  str(avg_rating),       None, ICON_STAR,   "Calificación promedio de productos, escala 1 a 5."), unsafe_allow_html=True)
-c2.markdown(kpi_card("Tasa Devolución",  f"{ret_rate}%",        None, ICON_RET,    "% de órdenes devueltas en el período."), unsafe_allow_html=True)
-c3.markdown(kpi_card("Total Órdenes",    fmt_num(total_ord),    None, ICON_BOX,    "Órdenes en el rango de rating seleccionado."), unsafe_allow_html=True)
-c4.markdown(kpi_card("Ticket Promedio",  f"₹{avg_ticket:,.0f}", None, ICON_TICKET, "Ingreso promedio por orden en INR."), unsafe_allow_html=True)
+c1.markdown(kpi_card("Rating Promedio",  str(avg_rating),       d_rating, ICON_STAR,   "Calificación promedio de productos, escala 1 a 5. Subir es bueno.", invert=False), unsafe_allow_html=True)
+c2.markdown(kpi_card("Tasa Devolución",  f"{ret_rate}%",        d_ret,    ICON_RET,    "% de órdenes devueltas en el período. Subir es malo.", invert=True), unsafe_allow_html=True)
+c3.markdown(kpi_card("Total Órdenes",    fmt_num(total_ord),    d_ord,    ICON_BOX,    "Órdenes en el rango de rating seleccionado. Subir es bueno.", invert=False), unsafe_allow_html=True)
+c4.markdown(kpi_card("Ticket Promedio",  f"₹{avg_ticket:,.0f}", d_ticket, ICON_TICKET, "Ingreso promedio por orden en INR. Subir es bueno.", invert=False), unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
