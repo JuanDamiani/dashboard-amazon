@@ -213,6 +213,22 @@ services:
     networks:
       - amazon-network
 
+  # ==========================================
+  # ENVIRONMENT TESTER (DATA-DRIVEN TESTING)
+  # ==========================================
+  kpi-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: kpi-tests
+    entrypoint: ["python3", "-m", "unittest", "discover", "-s", "/opt/airflow/tests"]
+    environment:
+      PYTHONPATH: /opt/airflow
+    volumes:
+      - .:/opt/airflow
+    networks:
+      - amazon-network
+
 networks:
   amazon-network:
     driver: bridge
