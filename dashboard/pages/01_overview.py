@@ -86,7 +86,7 @@ c1, c2, c3, c4, c5 = st.columns(5)
 c1.markdown(kpi_card("Ingresos Totales", fmt_rev(kpis["total_revenue"].iloc[0]),  pct_delta(kpis, prev_kpis, "total_revenue"), ICONS["revenue"], "Suma de todos los precios finales del período, en INR."), unsafe_allow_html=True)
 c2.markdown(kpi_card("Total Órdenes",    fmt_num(kpis["total_orders"].iloc[0]),   pct_delta(kpis, prev_kpis, "total_orders"),  ICONS["orders"],  "Cantidad total de órdenes. Cada fila = 1 orden = 1 unidad vendida."), unsafe_allow_html=True)
 c3.markdown(kpi_card("Ticket Promedio",  fmt_rev(kpis["avg_ticket"].iloc[0]),     pct_delta(kpis, prev_kpis, "avg_ticket"),    ICONS["ticket"],  "Ingreso promedio por orden en INR."), unsafe_allow_html=True)
-c4.markdown(kpi_card("Tasa Devolución",  f'{kpis["return_rate"].iloc[0]}%',       pct_delta(kpis, prev_kpis, "return_rate"),   ICONS["return"],  "% de órdenes devueltas. >15% puede indicar problemas."), unsafe_allow_html=True)
+c4.markdown(kpi_card("Tasa Devolución",  f'{kpis["return_rate"].iloc[0]}%',       pct_delta(kpis, prev_kpis, "return_rate"),   ICONS["return"],  "% de órdenes devueltas. >15% puede indicar problemas. Subir es malo.", invert=True), unsafe_allow_html=True)
 c5.markdown(kpi_card("Rating Promedio",  str(kpis["avg_rating"].iloc[0]),         pct_delta(kpis, prev_kpis, "avg_rating"),    ICONS["rating"],  "Calificación promedio de productos, escala 1 a 5."), unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -169,7 +169,7 @@ fig_trend.update_layout(
     hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=13), align="left"),
 )
 with st.container(key="chartcard_trend"):
-    chart_header(f"Evolución Mensual de {'Ingresos' if metric_sel == 'Revenue' else 'Órdenes'}", df_evol, "tendencia_overview.csv", "exp_trend", ratio=(24, 1))
+    chart_header(f"Evolución Mensual de {'Ingresos' if metric_sel == 'Revenue' else 'Órdenes'}", df_evol, "tendencia_overview.csv", "exp_trend", ratio=(24, 1), info="Evolución mes a mes de los ingresos o la cantidad de órdenes (según el selector). La línea punteada marca el promedio del período; se resaltan el mes máximo y el mínimo. El último mes en curso se excluye por estar incompleto.")
     st.plotly_chart(fig_trend, use_container_width=True, config={"displayModeBar": False})
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -193,7 +193,7 @@ with col1:
                       font=dict(family=FONT), margin=dict(t=15,b=20,l=10,r=50))
     fig1.update_xaxes(showgrid=True, gridcolor="#EEF2F7", range=[0, df_cat["pct"].max()*1.2])
     with st.container(key="chartcard_cat"):
-        chart_header("Ingresos por Categoría (%)", df_cat, "ingresos_por_categoria.csv", "exp_cat")
+        chart_header("Ingresos por Categoría (%)", df_cat, "ingresos_por_categoria.csv", "exp_cat", info="Participación de cada categoría en los ingresos totales del período (suma de precios finales). Muestra qué categorías concentran la facturación.")
         st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
 
 with col2:
@@ -213,7 +213,7 @@ with col2:
                       font=dict(family=FONT), margin=dict(t=15,b=20,l=10,r=10),
                       showlegend=False)
     with st.container(key="chartcard_ent"):
-        chart_header("Estado de Entregas", df_ent, "estado_entregas.csv", "exp_ent")
+        chart_header("Estado de Entregas", df_ent, "estado_entregas.csv", "exp_ent", info="Distribución de las órdenes según su estado de entrega (entregada, en tránsito, demorada, devuelta). El hover muestra los días promedio de envío y la tasa de devolución de cada estado.")
         st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
 
 with col3:
@@ -233,7 +233,7 @@ with col3:
                       font=dict(family=FONT), margin=dict(t=15,b=20,l=10,r=10),
                       showlegend=False)
     with st.container(key="chartcard_pay"):
-        chart_header("Métodos de Pago", df_pay, "metodos_pago.csv", "exp_pay")
+        chart_header("Métodos de Pago", df_pay, "metodos_pago.csv", "exp_pay", info="Distribución de las órdenes según el método de pago utilizado. El hover muestra la tasa de devolución y el ticket promedio asociados a cada método.")
         st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
 
 with col4:
@@ -254,5 +254,5 @@ with col4:
                       font=dict(family=FONT), margin=dict(t=15,b=20,l=10,r=10),
                       showlegend=False)
     with st.container(key="chartcard_dev"):
-        chart_header("Ventas por Dispositivo", df_dev, "ventas_dispositivo.csv", "exp_dev")
+        chart_header("Ventas por Dispositivo", df_dev, "ventas_dispositivo.csv", "exp_dev", info="Distribución de las órdenes según el dispositivo desde el que se compró (móvil, desktop, etc.). El hover muestra el ticket promedio y el rating promedio por dispositivo.")
         st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})

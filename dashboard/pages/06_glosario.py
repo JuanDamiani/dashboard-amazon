@@ -33,6 +33,8 @@ pasos = [
      "Cada gráfico tiene un ícono de descarga arriba a la derecha para bajar los datos de ese gráfico en CSV."),
     ("Ayuda en contexto",
      "El ícono (i) al lado del título de cada gráfico explica qué calcula y cómo leerlo."),
+    ("Carga de datos",
+     "En la sección Carga subís un archivo CSV, lo guardás en el servidor y ejecutás el pipeline con un clic. Seguís el estado en “Últimas ejecuciones” y, cuando termina, el dashboard se actualiza con los datos nuevos. Las tablas de Validaciones y Archivos procesados indican si la carga fue exitosa."),
 ]
 
 filas = ""

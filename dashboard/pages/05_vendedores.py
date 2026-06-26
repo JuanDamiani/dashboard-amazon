@@ -131,16 +131,29 @@ with st.container(key="chartcard_vend_rank"):
         chart_header("Ranking de Vendedores — Top 50 por Ingresos", df_rank,
                      "ranking_vendedores.csv", "exp_vend_rank", ratio=(24, 1),
                      info="Top 50 vendedores ordenados por ingresos. Muestra órdenes, ingresos, ticket promedio, rating y tasa de devolución de cada uno. Podés ordenar por cualquier columna haciendo clic en su encabezado.")
-        display = df_rank.copy()
-        display["ingresos"]    = display["ingresos"].apply(fmt_rev)
-        display["ticket_prom"] = display["ticket_prom"].apply(fmt_rev)
-        display["tasa_dev"]    = display["tasa_dev"].apply(lambda v: f"{v:.1f}%")
-        display["ordenes"]     = display["ordenes"].apply(lambda v: f"{v:,}")
-        display = display.rename(columns={
+        display = df_rank.rename(columns={
             "seller_id": "Vendedor", "ordenes": "Órdenes", "ingresos": "Ingresos",
             "ticket_prom": "Ticket Prom.", "rating_vendedor": "Rating", "tasa_dev": "Dev %",
         })
-        st.dataframe(display, use_container_width=True, height=380)
+
+        def color_dev_v(v):
+            try:
+                if v > 15: return "color:#C0392B;font-weight:600"
+            except: pass
+            return ""
+
+        styled_rank = (
+            display.style
+            .format({
+                "Ingresos":     fmt_rev,
+                "Ticket Prom.": fmt_rev,
+                "Dev %":        lambda v: f"{v:.1f}%",
+                "Órdenes":      lambda v: f"{v:,.0f}",
+                "Rating":       lambda v: f"{v:.2f}",
+            })
+            .applymap(color_dev_v, subset=["Dev %"])
+        )
+        st.dataframe(styled_rank, use_container_width=True, height=380)
 
 st.markdown("<br>", unsafe_allow_html=True)
 

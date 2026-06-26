@@ -12,7 +12,7 @@ import pandas as pd
 
 from utils.db import query
 from utils.filters import render_filters
-from utils.style import kpi_card, export_icon, chart_header, PALETTE, FONT
+from utils.style import kpi_card, export_icon, chart_header, PALETTE, FONT, PLOTLY_COLORS
 
 # ── FILTROS: globales + locales (subcategoria, marca) — RF3 ──
 filters      = render_filters(extra_filters=["subcategoria", "marca"])
@@ -82,7 +82,7 @@ c1, c2, c3, c4 = st.columns(4)
 c1.markdown(kpi_card("Ingresos Totales",  fmt_rev(kpis_v["total_revenue"].iloc[0]), pct_delta(kpis_v, prev_kpis_v, "total_revenue"), ICON_REV, "Suma de ingresos del período seleccionado en INR."), unsafe_allow_html=True)
 c2.markdown(kpi_card("Unidades Vendidas", fmt_num(kpis_v["total_orders"].iloc[0]),  pct_delta(kpis_v, prev_kpis_v, "total_orders"),  ICON_BOX, "Total de órdenes procesadas. Cada fila = 1 orden = 1 unidad vendida."), unsafe_allow_html=True)
 c3.markdown(kpi_card("Precio Promedio",   fmt_rev(kpis_v["avg_ticket"].iloc[0]),    pct_delta(kpis_v, prev_kpis_v, "avg_ticket"),    ICON_TAG, "Precio final promedio por orden en INR."), unsafe_allow_html=True)
-c4.markdown(kpi_card("Descuento Prom.",   f'{kpis_v["avg_discount"].iloc[0]}%',     None,                                         ICON_PCT, "Porcentaje de descuento promedio aplicado en el período."), unsafe_allow_html=True)
+c4.markdown(kpi_card("Descuento Prom.",   f'{kpis_v["avg_discount"].iloc[0]}%',     pct_delta(kpis_v, prev_kpis_v, "avg_discount"), ICON_PCT, "Porcentaje de descuento promedio aplicado en el período."), unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -102,17 +102,20 @@ fig = make_subplots(specs=[[{"secondary_y": True}]])
 fig.add_trace(go.Bar(
     x=df_evol["mes"], y=df_evol["ingresos"],
     name="Ingresos", marker_color=PALETTE["primary_light"], opacity=0.85,
+    hovertemplate="Ingresos: ₹%{y:,.0f}<extra></extra>",
 ), secondary_y=False)
 fig.add_trace(go.Scatter(
     x=df_evol["mes"], y=df_evol["unidades_vendidas"],
     name="Unidades vendidas", mode="lines+markers",
     line=dict(color=PALETTE["accent"], width=2.5), marker=dict(size=6),
+    hovertemplate="Unidades: %{y:,.0f}<extra></extra>",
 ), secondary_y=True)
 fig.update_layout(
     plot_bgcolor="white", paper_bgcolor="white",
     font=dict(family=FONT, color=PALETTE["text"]),
     legend=dict(orientation="h", y=1.1, x=0),
     margin=dict(t=50, b=40, l=10, r=10), height=340,
+    hovermode="x unified",
     hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=12)),
 )
 fig.update_yaxes(title_text="Ingresos (INR)", secondary_y=False, gridcolor="#EEF2F7")
@@ -235,13 +238,7 @@ with tab2:
         if v >= 1_000_000:     return f"₹{v/1_000_000:.0f}M"
         return f"₹{v:,.0f}"
 
-    df_sub_display = df_sub.copy()
-    df_sub_display["ingresos"]          = df_sub_display["ingresos"].apply(fmt_m)
-    df_sub_display["precio_promedio"]   = df_sub_display["precio_promedio"].apply(lambda v: f"₹{v:,.0f}")
-    df_sub_display["descuento_prom"]    = df_sub_display["descuento_prom"].apply(lambda v: f"{v:.0f}%")
-    df_sub_display["tasa_dev"]          = df_sub_display["tasa_dev"].apply(lambda v: f"{v:.1f}%")
-    df_sub_display["unidades_vendidas"] = df_sub_display["unidades_vendidas"].apply(lambda v: f"{v:,}")
-    df_sub_display = df_sub_display.rename(columns={
+    df_sub_display = df_sub.copy().rename(columns={
         "subcategory":       "Subcategoría",
         "category":          "Categoría",
         "unidades_vendidas": "Unidades",
@@ -252,9 +249,8 @@ with tab2:
         "tasa_dev":          "Dev %",
     })
 
-    def color_dev(val):
+    def color_dev(v):
         try:
-            v = float(val.replace("%", ""))
             if v > 15: return "color:#C0392B;font-weight:600"
             if v < 5:  return "color:#1A7F4B;font-weight:600"
         except: pass
@@ -262,6 +258,14 @@ with tab2:
 
     styled = (
         df_sub_display.style
+        .format({
+            "Unidades":     lambda v: f"{v:,.0f}",
+            "Ingresos":     fmt_m,
+            "Precio Prom.": lambda v: f"₹{v:,.0f}",
+            "Descuento":    lambda v: f"{v:.0f}%",
+            "Rating":       lambda v: f"{v:.2f}",
+            "Dev %":        lambda v: f"{v:.1f}%",
+        })
         .applymap(color_dev, subset=["Dev %"])
         .set_table_styles([
             {"selector": "th", "props": [
@@ -324,6 +328,41 @@ with tab3:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
+# ── Distribucion de ventas por dispositivo y categoria — RF3 ──
+df_dev = query(f"""
+    SELECT device, category,
+           COUNT(*) AS unidades,
+           ROUND(SUM(final_price)::numeric, 0) AS ingresos
+    FROM analytics.fact_orders {where_ventas}
+    GROUP BY device, category
+    ORDER BY category
+""", params)
+
+fig_dev = px.bar(
+    df_dev, x="category", y="ingresos", color="device",
+    barmode="stack",
+    color_discrete_sequence=PLOTLY_COLORS,
+    labels={"ingresos": "Ingresos (INR)", "category": "", "device": "Dispositivo"},
+    custom_data=["device", "unidades"],
+)
+fig_dev.update_traces(
+    hovertemplate="<b>%{x}</b><br>Dispositivo: %{customdata[0]}<br>Ingresos: ₹%{y:,.0f}<br>Unidades: %{customdata[1]:,}<extra></extra>",
+)
+fig_dev.update_layout(
+    plot_bgcolor="white", paper_bgcolor="white", height=380,
+    font=dict(family=FONT, color=PALETTE["text"]),
+    margin=dict(t=50, b=40, l=10, r=10),
+    legend=dict(orientation="h", y=1.1, x=0, title=""),
+    hoverlabel=dict(bgcolor="white", bordercolor="#E4E9F0", font=dict(family=FONT, size=12)),
+)
+fig_dev.update_yaxes(gridcolor="#EEF2F7")
+fig_dev.update_xaxes(gridcolor="#EEF2F7")
+with st.container(key="chartcard_v_dev"):
+    chart_header("Ventas por Dispositivo y Categoría", df_dev, "ventas_dispositivo_categoria.csv", "exp_v_dev", ratio=(24, 1), info="Distribución de los ingresos por categoría, desglosados según el dispositivo desde el que se realizó la compra (móvil, desktop, etc.). Muestra qué canal predomina en cada categoría.")
+    st.plotly_chart(fig_dev, use_container_width=True, config={"displayModeBar": False})
+
+st.markdown("<br>", unsafe_allow_html=True)
+
 # ── Correlacion descuento → ordenes en el tiempo ─────────
 df_corr = query(f"""
     SELECT DATE_TRUNC('month', purchase_date)::date AS mes,
@@ -379,5 +418,11 @@ fig_corr.update_layout(
                 tickformat=".0f", ticksuffix="%"),
 )
 with st.container(key="chartcard_v_corr"):
-    chart_header("Relación entre Nivel de Descuento y Volumen de Compra", df_corr, "correlacion_descuento_ordenes.csv", "exp_v_corr", ratio=(24, 1), info="Compara el descuento promedio mensual con la cantidad de órdenes. Ayuda a ver si subir los descuentos impulsa el volumen de ventas en los meses siguientes.")
+    chart_header("Correlación: Descuento Promedio → Volumen de Órdenes", df_corr, "correlacion_descuento_ordenes.csv", "exp_v_corr", ratio=(24, 1), info="Compara el descuento promedio mensual con la cantidad de órdenes. Ayuda a ver si subir los descuentos impulsa el volumen de ventas en los meses siguientes.")
     st.plotly_chart(fig_corr, use_container_width=True, config={"displayModeBar": False})
+st.markdown(
+    '<div style="font-size:0.72rem;color:#9BAAB8;margin-top:-12px;">'
+    'Cuando el descuento promedio sube (línea naranja), el volumen de órdenes suele aumentar en los meses siguientes.'
+    '</div>',
+    unsafe_allow_html=True,
+)
